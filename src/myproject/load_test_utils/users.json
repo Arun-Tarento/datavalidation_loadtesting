@@ -1,0 +1,52 @@
+[
+  {
+    "username": "perf_user_0001",
+    "email": "perf_user_0001@example.com",
+    "password": "password"
+  },
+  {
+    "username": "perf_user_0002",
+    "email": "perf_user_0002@example.com",
+    "password": "password"
+  },
+  {
+    "username": "perf_user_0003",
+    "email": "perf_user_0003@example.com",
+    "password": "password"
+  },
+  {
+    "username": "perf_user_0004",
+    "email": "perf_user_0004@example.com",
+    "password": "password"
+  },
+  {
+    "username": "perf_user_0005",
+    "email": "perf_user_0005@example.com",
+    "password": "password"
+  },
+  {
+    "username": "perf_user_0006",
+    "email": "perf_user_0006@example.com",
+    "password": "password"
+  },
+  {
+    "username": "perf_user_0007",
+    "email": "perf_user_0007@example.com",
+    "password": "password"
+  },
+  {
+    "username": "perf_user_0008",
+    "email": "perf_user_0008@example.com",
+    "password": "password"
+  },
+  {
+    "username": "perf_user_0009",
+    "email": "perf_user_0009@example.com",
+    "password": "password"
+  },
+  {
+    "username": "perf_user_0010",
+    "email": "perf_user_0010@example.com",
+    "password": "password"
+  }
+]
