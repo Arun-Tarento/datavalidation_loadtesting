@@ -1,0 +1,20 @@
+# --- Python environments ---
+venv/
+.env
+__pycache__/
+*.py[cod]
+
+# --- Logs / outputs ---
+logs/
+generated_audio/
+**/asr_samples/
+*.log
+
+# --- IDEs ---
+.vscode/
+.idea/
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+EOF

@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myproject"
+version = "0.1.0"
+description = "Automation and API testing framework using Playwright and pytest"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Arun", email = "arun@example.com" }
+]
+license = { text = "MIT" }
+
+# You can list runtime dependencies here (installed automatically with pip)
+dependencies = [
+  
+]
+
+[project.optional-dependencies]
+# You can install these via pip install .[dev]
+dev = [
+  "pytest-xdist>=3.3.1",
+  "pytest-dotenv>=0.10.0",
+  "httpx>=0.27.0",
+  "black>=24.0.0",
+  "ruff>=0.4.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+pythonpath = ["src"]
+addopts = "-ra -q"
+env_files = [".env"]
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 88
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+
