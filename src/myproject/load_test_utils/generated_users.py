@@ -32,12 +32,12 @@ def load_existing():
 
 def generate_users(count: int, prefix: str, domain: str, password: str):
     existing = load_existing()
-    existing_usernames = {entry.get("username") for entry in existing if isinstance(entry, dict)}
+    existing_usernames = {entry.get("name") or entry.get("username") for entry in existing if isinstance(entry, dict)}
     users = existing.copy()
     # start index should be one after the max existing numbered suffix, not just len(existing)
     max_idx = 0
     for u in existing:
-        uname = u.get("username", "")
+        uname = u.get("name") or u.get("username", "")
         if uname.startswith(prefix + "_"):
             try:
                 n = int(uname.rsplit("_", 1)[1])
@@ -49,17 +49,17 @@ def generate_users(count: int, prefix: str, domain: str, password: str):
 
     i = start_index
     while len(users) < count:
-        username = f"{prefix}_{i:04d}"
-        if username in existing_usernames:
+        name = f"{prefix}_{i:04d}"
+        if name in existing_usernames:
             i += 1
             continue
-        email = f"{username}@{domain}"
+        email = f"{name}@{domain}"
         users.append({
-            "username": username,
+            "name": name,
             "email": email,
             "password": password
         })
-        existing_usernames.add(username)
+        existing_usernames.add(name)
         i += 1
 
     return users[:count]
@@ -67,7 +67,7 @@ def generate_users(count: int, prefix: str, domain: str, password: str):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--count", type=int, default=DEFAULT_COUNT, help="Number of user entries to generate")
-    p.add_argument("--prefix", type=str, default=DEFAULT_PREFIX, help="Username/email prefix")
+    p.add_argument("--prefix", type=str, default=DEFAULT_PREFIX, help="name/email prefix")
     p.add_argument("--domain", type=str, default=DEFAULT_DOMAIN, help="Email domain")
     p.add_argument("--password", type=str, default=DEFAULT_PASSWORD, help="Password for all users")
     args = p.parse_args()
