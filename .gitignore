@@ -1,20 +1,75 @@
-# --- Python environments ---
-venv/
+# Environment variables
 .env
+.env.local
+.env.*.local
+
+# Virtual environment
+venv/
+env/
+ENV/
+.venv/
+
+# Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
 
-# --- Logs / outputs ---
-logs/
-generated_audio/
-**/asr_samples/
-*.log
+# Load testing results
+*results*.json
+*_results.json
+asr_latency_locust_results.json
+nmt_latency_locust_results.json
 
-# --- IDEs ---
+# CSV and HTML reports from Locust
+*_stats.csv
+*_stats_history.csv
+*_failures.csv
+*_exceptions.csv
+*.html
+!ASR/README.md
+!NMT/README.md
+
+# Sample data files
+*samples*.json
+audio_samples.json
+nmt_samples.json
+ASR/audio_samples.json
+NMT/nmt_samples.json
+
+# Audio files
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.Zone.Identifier
+
+# IDE and editor files
 .vscode/
 .idea/
-
-# --- OS files ---
+*.swp
+*.swo
+*~
 .DS_Store
-Thumbs.db
-EOF
+
+# Logs
+*.log
+USER_LOG_FILE
+
+# Test state files
+.test_state.json
+test/.test_state.json
+
+# User data
+created_users.json
+users.json
+refresh_token.json
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
