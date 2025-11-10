@@ -16,13 +16,20 @@ Usage:
 import os
 import json
 import random
-from typing import Dict, Any, List
+import time
+from datetime import datetime
+from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 from locust import HttpUser, task, between, events
 from locust.runners import MasterRunner, WorkerRunner
 
 # Load environment variables
 load_dotenv()
+
+# Global tracking variables
+first_failure_time: Optional[float] = None
+throughput_samples = []  # List of (timestamp, rps) tuples
+payload_sizes = []  # List of payload sizes in bytes
 
 
 class NMTConfig:
@@ -151,6 +158,11 @@ class NMTUser(HttpUser):
         # Build payload
         payload = self.config.build_payload(source_text)
 
+        # Track payload size
+        global payload_sizes
+        payload_size = len(json.dumps(payload).encode('utf-8'))
+        payload_sizes.append(payload_size)
+
         # Get headers
         headers = self.config.get_headers()
 
@@ -162,21 +174,86 @@ class NMTUser(HttpUser):
             catch_response=True,
             name="NMT Request"
         ) as response:
-            if response.status_code == 200:
-                try:
-                    response_data = response.json()
-                    # Mark as success
-                    response.success()
-                except json.JSONDecodeError:
-                    response.failure("Response is not valid JSON")
-            else:
-                response.failure(f"Got status code {response.status_code}: {response.text}")
+
+            if response.status_code != 200:
+                self._track_failure()
+                response.failure(f"HTTP {response.status_code}: {response.text[:200]}")
+                return
+
+            # JSON parse
+            try:
+                data = response.json()
+            except ValueError:
+                self._track_failure()
+                response.failure("Response not valid JSON")
+                return
+
+            # Validate 'output' exists and is a non-empty list
+            output = data.get("output")
+            if not isinstance(output, list) or len(output) == 0:
+                self._track_failure()
+                response.failure("Missing or empty 'output' array in response")
+                return
+
+            # Validate first output element is a dict with a non-empty translated text field
+            first = output[0]
+            if not isinstance(first, dict):
+                self._track_failure()
+                response.failure("Invalid output[0] format; expected object")
+                return
+
+            # Common keys to look for in NMT responses (be permissive)
+            translated_text = (
+                first.get("target")
+                or first.get("translation")
+                or first.get("translatedText")
+                or first.get("text")
+                or first.get("output")
+            )
+
+            if not isinstance(translated_text, str) or not translated_text.strip():
+                self._track_failure()
+                response.failure("Empty or missing translated text in output[0]")
+                return
+
+            # Optional: basic sanity checks (length ratio, identical source->target detection)
+            try:
+                src = payload.get("input", [{}])[0].get("source", "")
+                if isinstance(src, str) and src.strip():
+                    # if translation equals source exactly, mark as warning/failure (adjust as needed)
+                    if str(translated_text).strip() == str(src).strip():
+                        self._track_failure()
+                        response.failure("Translated text identical to source (possible failure)")
+                        return
+                    # optional: extremely short translations may indicate an error
+                    if len(str(translated_text).split()) < 1:
+                        self._track_failure()
+                        response.failure("Translated text too short")
+                        return
+            except Exception:
+                # don't crash — treat as non-fatal unless you want to enforce stricter checks
+                pass
+
+            # All checks passed -> success
+            response.success()
+
+    def _track_failure(self):
+        """Track the first failure timestamp"""
+        global first_failure_time
+        if first_failure_time is None:
+            first_failure_time = time.time()
 
 
 # Locust event handlers for custom reporting
 @events.test_start.add_listener
 def on_test_start(environment, **kwargs):
     """Called when the test starts"""
+    global first_failure_time, throughput_samples, payload_sizes
+    # Reset global tracking variables
+    first_failure_time = None
+    throughput_samples = []
+    payload_sizes = []
+
     print("\n" + "="*70)
     print("NMT LATENCY LOAD TEST STARTED")
     print("="*70)
@@ -186,10 +263,47 @@ def on_test_start(environment, **kwargs):
     print(f"NMT Samples Loaded: {len(config.nmt_samples)}")
     print("="*70 + "\n")
 
+    # Start periodic throughput tracking
+    def track_throughput(environment):
+        """Periodically sample throughput"""
+        import threading
+        stop_event = threading.Event()
+
+        def sample_loop():
+            try:
+                while not stop_event.is_set() and environment.runner.state not in ["stopped", "stopping"]:
+                    try:
+                        stats = environment.stats.total
+                        current_time = time.time()
+                        current_rps = stats.current_rps if hasattr(stats, 'current_rps') else stats.total_rps
+                        throughput_samples.append((current_time, current_rps))
+                    except Exception as e:
+                        # Silently continue if stats access fails
+                        pass
+                    # Use shorter sleep intervals for more responsive shutdown
+                    for _ in range(4):  # 4 x 0.5s = 2 seconds total
+                        if stop_event.is_set() or environment.runner.state in ["stopped", "stopping"]:
+                            break
+                        time.sleep(0.5)
+            except Exception:
+                pass  # Thread exits silently on any error
+
+        # Store stop event for cleanup
+        environment._throughput_stop_event = stop_event
+        thread = threading.Thread(target=sample_loop, daemon=True)
+        thread.start()
+        return thread
+
+    track_throughput(environment)
+
 
 @events.test_stop.add_listener
 def on_test_stop(environment, **kwargs):
     """Called when the test stops"""
+    # Signal throughput thread to stop
+    if hasattr(environment, '_throughput_stop_event'):
+        environment._throughput_stop_event.set()
+
     print("\n" + "="*70)
     print("NMT LATENCY LOAD TEST COMPLETED")
     print("="*70)
@@ -222,7 +336,59 @@ def on_test_stop(environment, **kwargs):
 
 def save_results_to_json(environment):
     """Save test results to JSON file"""
+    global first_failure_time, throughput_samples, payload_sizes
     stats = environment.stats
+
+    # Calculate error rate
+    error_rate = (stats.total.num_failures / stats.total.num_requests * 100) if stats.total.num_requests > 0 else 0
+
+    # Calculate average payload size
+    avg_payload_size = sum(payload_sizes) / len(payload_sizes) if payload_sizes else 0
+
+    # Calculate throughput statistics
+    throughput_stats = {}
+    if throughput_samples:
+        throughput_values = [rps for _, rps in throughput_samples]
+        max_rps = max(throughput_values)
+        min_rps = min(throughput_values)
+        avg_rps = sum(throughput_values) / len(throughput_values)
+
+        # Find when max and min occurred
+        max_idx = throughput_values.index(max_rps)
+        min_idx = throughput_values.index(min_rps)
+        max_time, _ = throughput_samples[max_idx]
+        min_time, _ = throughput_samples[min_idx]
+
+        # Get test start time (first sample)
+        start_time = throughput_samples[0][0] if throughput_samples else time.time()
+
+        throughput_stats = {
+            "average_rps": avg_rps,
+            "max_rps": max_rps,
+            "max_rps_at_seconds": max_time - start_time,
+            "max_rps_timestamp": datetime.fromtimestamp(max_time).isoformat(),
+            "min_rps": min_rps,
+            "min_rps_at_seconds": min_time - start_time,
+            "min_rps_timestamp": datetime.fromtimestamp(min_time).isoformat(),
+        }
+
+    # First failure information
+    first_failure_info = None
+    if first_failure_time:
+        # Get test start time from stats
+        test_start = environment.stats.start_time
+        time_to_first_failure = first_failure_time - test_start
+        first_failure_info = {
+            "occurred": True,
+            "timestamp": datetime.fromtimestamp(first_failure_time).isoformat(),
+            "seconds_after_start": time_to_first_failure
+        }
+    else:
+        first_failure_info = {
+            "occurred": False,
+            "timestamp": None,
+            "seconds_after_start": None
+        }
 
     output = {
         "test_config": {
@@ -234,6 +400,9 @@ def save_results_to_json(environment):
             "total_requests": stats.total.num_requests,
             "failed_requests": stats.total.num_failures,
             "success_rate": ((stats.total.num_requests - stats.total.num_failures) / stats.total.num_requests * 100) if stats.total.num_requests > 0 else 0,
+            "error_rate_percentage": round(error_rate, 2),
+            "first_failure": first_failure_info,
+            "average_payload_size_bytes": round(avg_payload_size, 2),
             "response_time_ms": {
                 "min": stats.total.min_response_time,
                 "max": stats.total.max_response_time,
@@ -243,15 +412,26 @@ def save_results_to_json(environment):
                 "p99": stats.total.get_response_time_percentile(0.99)
             },
             "requests_per_second": stats.total.total_rps,
-            "average_content_size_bytes": stats.total.avg_content_length
+            "average_content_size_bytes": stats.total.avg_content_length,
+            "throughput": throughput_stats if throughput_stats else {
+                "average_rps": stats.total.total_rps,
+                "max_rps": None,
+                "max_rps_at_seconds": None,
+                "max_rps_timestamp": None,
+                "min_rps": None,
+                "min_rps_at_seconds": None,
+                "min_rps_timestamp": None
+            }
         },
         "detailed_stats": {}
     }
 
     # Add per-endpoint statistics
     for name, stat in stats.entries.items():
-        if name != "Aggregated":
-            output["detailed_stats"][name] = {
+        # Convert tuple keys to strings for JSON serialization
+        name_str = name[1] if isinstance(name, tuple) and len(name) > 1 else str(name)
+        if name_str != "Aggregated":
+            output["detailed_stats"][name_str] = {
                 "num_requests": stat.num_requests,
                 "num_failures": stat.num_failures,
                 "min_response_time": stat.min_response_time,

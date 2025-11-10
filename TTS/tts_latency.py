@@ -1,16 +1,16 @@
 """
-ASR Load Testing Script with Locust Integration
-Tests the latency of ASR service at https://core-v1.ai4inclusion.org/
+TTS Load Testing Script with Locust Integration
+Tests the latency of TTS service at https://core-v1.ai4inclusion.org/
 
 Usage:
     # Web UI mode (default)
-    locust -f ASR/asr_latency.py --host=https://core-v1.ai4inclusion.org
+    locust -f TTS/tts_latency.py --host=https://core-v1.ai4inclusion.org
 
     # Headless mode
-    locust -f ASR/asr_latency.py --host=https://core-v1.ai4inclusion.org --headless -u 10 -r 2 --run-time 60s
+    locust -f TTS/tts_latency.py --host=https://core-v1.ai4inclusion.org --headless -u 10 -r 2 --run-time 60s
 
     # With custom host
-    locust -f ASR/asr_latency.py --host=https://your-custom-host
+    locust -f TTS/tts_latency.py --host=https://your-custom-host
 """
 
 import os
@@ -23,9 +23,6 @@ from dotenv import load_dotenv
 from locust import HttpUser, task, between, events
 from locust.runners import MasterRunner, WorkerRunner
 
-from collections import Counter
-_status_counts = Counter()
-
 # Load environment variables
 load_dotenv()
 
@@ -35,8 +32,8 @@ throughput_samples = []  # List of (timestamp, rps) tuples
 payload_sizes = []  # List of payload sizes in bytes
 
 
-class ASRConfig:
-    """Configuration handler for ASR load testing"""
+class TTSConfig:
+    """Configuration handler for TTS load testing"""
 
     def __init__(self):
         """Load configuration from environment variables"""
@@ -46,61 +43,44 @@ class ASRConfig:
         self.username = os.getenv("USERNAME")
         self.password = os.getenv("PASSWORD")
 
-        # ASR Service Configuration
-        self.service_id = os.getenv("ASR_SERVICE_ID", "ai4bharat/indictasr")
-        self.source_language = os.getenv("ASR_SOURCE_LANGUAGE", "hi")
+        # TTS Service Configuration
+        self.service_id = os.getenv("TTS_SERVICE_ID", "indic-tts-coqui-indo_aryan")
+        self.source_language = os.getenv("TTS_SOURCE_LANGUAGE", "hi")
+        self.gender = os.getenv("TTS_GENDER", "female")
+        self.sampling_rate = int(os.getenv("TTS_SAMPLING_RATE", "22050"))
+        self.audio_format = os.getenv("TTS_AUDIO_FORMAT", "wav")
         self.control_config = self._parse_control_config()
 
-        # Audio Configuration
-        self.audio_format = os.getenv("AUDIO_FORMAT", "wav")
-        self.sampling_rate = int(os.getenv("SAMPLING_RATE", "16000"))
-        self.transcription_format = os.getenv("TRANSCRIPTION_FORMAT", "transcript")
-        self.best_token_count = int(os.getenv("BEST_TOKEN_COUNT", "0"))
-        self.encoding = os.getenv("ASR_ENCODING", "base64")
-        self.preprocessors = self._parse_list_config("ASR_PREPROCESSORS", ["vad", "denoise"])
-        self.postprocessors = self._parse_list_config("ASR_POSTPROCESSORS", ["lm", "punctuation"])
-
-        # Load audio samples
-        self.audio_samples = self._load_audio_samples()
+        # Load TTS samples
+        self.tts_samples = self._load_tts_samples()
 
         # Validate configuration
         self._validate_config()
 
     def _parse_control_config(self) -> Dict[str, Any]:
         """Parse controlConfig from environment variable"""
-        control_config_str = os.getenv("ASR_CONTROL_CONFIG", "{}")
+        control_config_str = os.getenv("TTS_CONTROL_CONFIG", '{"dataTracking":false}')
         try:
             return json.loads(control_config_str)
         except json.JSONDecodeError:
-            print(f"Warning: Invalid JSON in ASR_CONTROL_CONFIG, using empty dict")
-            return {}
+            print(f"Warning: Invalid JSON in TTS_CONTROL_CONFIG, using default")
+            return {"dataTracking": False}
 
-    def _parse_list_config(self, key: str, default: List[str]) -> List[str]:
-        """Parse list configuration from environment variable"""
-        config_str = os.getenv(key, "")
-        if not config_str:
-            return default
+    def _load_tts_samples(self) -> List[Dict[str, str]]:
+        """Load TTS samples from JSON file"""
+        tts_file_path = os.getenv("TTS_SAMPLES_FILE", "TTS/tts_samples.json")
         try:
-            return json.loads(config_str)
-        except json.JSONDecodeError:
-            print(f"Warning: Invalid JSON in {key}, using default")
-            return default
-
-    def _load_audio_samples(self) -> List[str]:
-        """Load audio samples from JSON file"""
-        audio_file_path = os.getenv("AUDIO_SAMPLES_FILE", "ASR/audio_samples.json")
-        try:
-            with open(audio_file_path, 'r') as f:
+            with open(tts_file_path, 'r') as f:
                 data = json.load(f)
-                samples = data.get("audio_samples", [])
+                samples = data.get("tts_samples", [])
                 if samples:
-                    print(f"Loaded {len(samples)} audio samples from {audio_file_path}")
+                    print(f"Loaded {len(samples)} TTS samples from {tts_file_path}")
                 return samples
         except FileNotFoundError:
-            print(f"Error: Audio samples file not found at {audio_file_path}")
+            print(f"Error: TTS samples file not found at {tts_file_path}")
             return []
         except json.JSONDecodeError:
-            print(f"Error: Invalid JSON in audio samples file")
+            print(f"Error: Invalid JSON in TTS samples file")
             return []
 
     def _validate_config(self):
@@ -108,19 +88,18 @@ class ASRConfig:
         if not self.auth_token:
             raise ValueError("AUTH_TOKEN is required in .env file")
         if not self.service_id:
-            raise ValueError("ASR_SERVICE_ID is required in .env file")
+            raise ValueError("TTS_SERVICE_ID is required in .env file")
         if not self.source_language:
-            raise ValueError("ASR_SOURCE_LANGUAGE is required in .env file")
-        if not self.audio_samples:
-            raise ValueError("No audio samples found. Please check audio_samples.json")
+            raise ValueError("TTS_SOURCE_LANGUAGE is required in .env file")
+        if not self.tts_samples:
+            raise ValueError("No TTS samples found. Please check tts_samples.json")
 
-    def build_payload(self, audio_content: str) -> Dict[str, Any]:
+    def build_payload(self, source_text: str) -> Dict[str, Any]:
         """Build the API payload"""
         return {
-            "audio": [
+            "input": [
                 {
-                    "audioContent": audio_content,
-                    # "audioUri": audio_uri
+                    "source": source_text
                 }
             ],
             "config": {
@@ -128,13 +107,9 @@ class ASRConfig:
                     "sourceLanguage": self.source_language
                 },
                 "serviceId": self.service_id,
-                "audioFormat": self.audio_format,
+                "gender": self.gender,
                 "samplingRate": self.sampling_rate,
-                "transcriptionFormat": self.transcription_format,
-                "bestTokenCount": self.best_token_count,
-                "encoding": self.encoding,
-                "preProcessors": self.preprocessors,
-                "postProcessors": self.postprocessors
+                "audioFormat": self.audio_format
             },
             "controlConfig": self.control_config
         }
@@ -147,17 +122,18 @@ class ASRConfig:
             "Authorization": self.auth_token
         }
 
-    def get_random_audio_sample(self) -> str:
-        """Get a random audio sample from the loaded samples"""
-        return random.choice(self.audio_samples)
+    def get_random_tts_sample(self) -> str:
+        """Get a random TTS sample from the loaded samples"""
+        sample = random.choice(self.tts_samples)
+        return sample.get("source", "")
 
 
-# Initialize global configuration (will be created fresh in each user)
-# config = ASRConfig()  # Commented out to avoid caching
+# Initialize global configuration
+config = TTSConfig()
 
 
-class ASRUser(HttpUser):
-    """Locust User class for ASR load testing"""
+class TTSUser(HttpUser):
+    """Locust User class for TTS load testing"""
 
     # Wait time between tasks (in seconds)
     # Can be configured via environment variable
@@ -168,32 +144,21 @@ class ASRUser(HttpUser):
 
     def on_start(self):
         """Called when a simulated user starts"""
-        try:
-            # Reload .env to get fresh config
-            load_dotenv(override=True)
-            self.config = ASRConfig()  # Create fresh config for each user
-            print(f"Starting ASR User - Service: {self.config.service_id}, Language: {self.config.source_language}")
-        except Exception as e:
-            print(f"ERROR in ASR User on_start: {e}")
-            import traceback
-            traceback.print_exc()
-            raise
+        self.config = config
+        print(f"Starting TTS User - Service: {self.config.service_id}, "
+              f"Language: {self.config.source_language}, Gender: {self.config.gender}")
 
     @task
-    def asr_request(self):
+    def tts_request(self):
         """
-        Task to send ASR request
+        Task to send TTS request
         This is the main load testing task that will be executed repeatedly
         """
-        try:
-            # Get random audio sample
-            audio_content = self.config.get_random_audio_sample()
+        # Get random TTS sample
+        source_text = self.config.get_random_tts_sample()
 
-            # Build payload
-            payload = self.config.build_payload(audio_content)
-        except Exception as e:
-            print(f"ERROR building ASR payload: {e}")
-            return
+        # Build payload
+        payload = self.config.build_payload(source_text)
 
         # Track payload size
         global payload_sizes
@@ -204,79 +169,75 @@ class ASRUser(HttpUser):
         headers = self.config.get_headers()
 
         # Send request with Locust's built-in metrics tracking
-        try:
-            with self.client.post(
-                "/api/v1/asr/inference",
-                json=payload,
-                headers=headers,
-                catch_response=True,
-                name="ASR Request",
-                timeout=60  # 60 second timeout for large audio files
-            ) as response:
+        with self.client.post(
+            "/api/v1/tts/inference",
+            json=payload,
+            headers=headers,
+            catch_response=True,
+            name="TTS Request"
+        ) as response:
 
-                if response.status_code != 200:
-                    self._track_failure()
-                    response.failure(f"HTTP {response.status_code}: {response.text[:200]}")
-                    return
+            if response.status_code != 200:
+                self._track_failure()
+                response.failure(f"HTTP {response.status_code}: {response.text[:200]}")
+                return
 
-                # JSON parse
-                try:
-                    data = response.json()
-                except ValueError:
-                    self._track_failure()
-                    response.failure("Response not valid JSON")
-                    return
-
-                # Validate 'output' exists and is a non-empty list
-                output = data.get("output")
-                if not isinstance(output, list) or len(output) == 0:
-                    self._track_failure()
-                    response.failure("Missing or empty 'output' array in response")
-                    return
-
-                # Validate first output element is a dict with non-empty 'source' field
-                first = output[0]
-                if not isinstance(first, dict):
-                    self._track_failure()
-                    response.failure("Invalid output[0] format; expected object")
-                    return
-
-                transcript = first.get("source", "")
-                # trim and check non-empty (handles unicode/hindi text too)
-                if not isinstance(transcript, str) or not transcript.strip():
-                    self._track_failure()
-                    response.failure("Empty or missing 'source' in output[0]")
-                    return
-
-                # Optional: you can also inspect nBestTokens if needed
-                # nbest = first.get("nBestTokens")
-
-                # All checks passed -> success
-                response.success()
-
+            # JSON parse
             try:
-                _status_counts[str(response.status_code)] += 1
+                data = response.json()
+            except ValueError:
+                self._track_failure()
+                response.failure("Response not valid JSON")
+                return
+
+            # Validate 'output' exists and is a non-empty list
+            output = data.get("output")
+            if not isinstance(output, list) or len(output) == 0:
+                self._track_failure()
+                response.failure("Missing or empty 'output' array in response")
+                return
+
+            # Validate first output element is a dict with audio content
+            first = output[0]
+            if not isinstance(first, dict):
+                self._track_failure()
+                response.failure("Invalid output[0] format; expected object")
+                return
+
+            # Look for audio content in various possible fields
+            audio_content = (
+                first.get("audioContent")
+                or first.get("audio")
+                or first.get("audioUri")
+                or first.get("data")
+            )
+
+            # Check if audio content exists and is non-empty
+            if not audio_content or (isinstance(audio_content, str) and not audio_content.strip()):
+                self._track_failure()
+                response.failure("Empty or missing audio content in output[0]")
+                return
+
+            # Optional: validate audio content is base64 or valid format
+            try:
+                if isinstance(audio_content, str):
+                    # Basic check: base64 encoded audio should be reasonably long
+                    if len(audio_content) < 100:
+                        self._track_failure()
+                        response.failure("Audio content too short (possible error)")
+                        return
             except Exception:
+                # Don't crash on validation errors
                 pass
 
-        except Exception as e:
-            # Catch timeout and other exceptions
-            self._track_failure()
-            print(f"ASR Request Exception: {e}")
-            self.environment.events.request.fire(
-                request_type="POST",
-                name="ASR Request",
-                response_time=0,
-                response_length=0,
-                exception=e,
-            )
+            # All checks passed -> success
+            response.success()
 
     def _track_failure(self):
         """Track the first failure timestamp"""
         global first_failure_time
         if first_failure_time is None:
             first_failure_time = time.time()
-
 
 
 # Locust event handlers for custom reporting
@@ -289,17 +250,15 @@ def on_test_start(environment, **kwargs):
     throughput_samples = []
     payload_sizes = []
 
-    # Create config instance for display
-    load_dotenv(override=True)
-    test_config = ASRConfig()
     print("\n" + "="*70)
-    print("ASR LATENCY LOAD TEST STARTED")
+    print("TTS LATENCY LOAD TEST STARTED")
     print("="*70)
-    print(f"Service ID: {test_config.service_id}")
-    print(f"Source Language: {test_config.source_language}")
-    print(f"Audio Format: {test_config.audio_format}")
-    print(f"Sampling Rate: {test_config.sampling_rate}")
-    print(f"Audio Samples Loaded: {len(test_config.audio_samples)}")
+    print(f"Service ID: {config.service_id}")
+    print(f"Source Language: {config.source_language}")
+    print(f"Gender: {config.gender}")
+    print(f"Sampling Rate: {config.sampling_rate}")
+    print(f"Audio Format: {config.audio_format}")
+    print(f"TTS Samples Loaded: {len(config.tts_samples)}")
     print("="*70 + "\n")
 
     # Start periodic throughput tracking
@@ -316,7 +275,7 @@ def on_test_start(environment, **kwargs):
                         current_time = time.time()
                         current_rps = stats.current_rps if hasattr(stats, 'current_rps') else stats.total_rps
                         throughput_samples.append((current_time, current_rps))
-                    except Exception:
+                    except Exception as e:
                         # Silently continue if stats access fails
                         pass
                     # Use shorter sleep intervals for more responsive shutdown
@@ -344,7 +303,7 @@ def on_test_stop(environment, **kwargs):
         environment._throughput_stop_event.set()
 
     print("\n" + "="*70)
-    print("ASR LATENCY LOAD TEST COMPLETED")
+    print("TTS LATENCY LOAD TEST COMPLETED")
     print("="*70)
 
     # Get statistics
@@ -381,10 +340,6 @@ def save_results_to_json(environment):
     """Save test results to JSON file"""
     global first_failure_time, throughput_samples, payload_sizes
     stats = environment.stats
-
-    # Create config instance for saving results
-    load_dotenv(override=True)
-    save_config = ASRConfig()
 
     # Calculate error rate
     error_rate = (stats.total.num_failures / stats.total.num_requests * 100) if stats.total.num_requests > 0 else 0
@@ -439,11 +394,11 @@ def save_results_to_json(environment):
 
     output = {
         "test_config": {
-            "service_id": save_config.service_id,
-            "source_language": save_config.source_language,
-            "audio_format": save_config.audio_format,
-            "sampling_rate": save_config.sampling_rate,
-            "transcription_format": save_config.transcription_format
+            "service_id": config.service_id,
+            "source_language": config.source_language,
+            "gender": config.gender,
+            "sampling_rate": config.sampling_rate,
+            "audio_format": config.audio_format
         },
         "statistics": {
             "total_requests": stats.total.num_requests,
@@ -490,42 +445,33 @@ def save_results_to_json(environment):
             }
 
     # Save to file
-    filename = "asr_latency_locust_results.json"
+    filename = "tts_latency_locust_results.json"
     with open(filename, 'w') as f:
         json.dump(output, f, indent=2)
 
     print(f"\nDetailed results saved to {filename}")
 
 
-# Custom shape classes for advanced load patterns
-class StepLoadShape:
-    """
-    Example custom load shape - increases users in steps
-    To use: locust -f asr_latency.py --host=... --shape=StepLoadShape
-    """
-    pass
-
-
 if __name__ == "__main__":
     """
     This allows running the script directly, but Locust should be run via CLI:
-    locust -f ASR/asr_latency.py --host=http://core-v1.ai4inclusion.org:8080
+    locust -f TTS/tts_latency.py --host=https://core-v1.ai4inclusion.org
     """
     import sys
     print("\n" + "="*70)
-    print("ASR Latency Load Testing with Locust")
+    print("TTS Latency Load Testing with Locust")
     print("="*70)
     print("\nTo run this test, use the Locust CLI:")
     print("\n1. Web UI mode (recommended):")
-    print("   locust -f ASR/asr_latency.py --host=https://core-v1.ai4inclusion.org")
+    print("   locust -f TTS/tts_latency.py --host=https://core-v1.ai4inclusion.org")
     print("   Then open http://localhost:8089 in your browser")
     print("\n2. Headless mode:")
-    print("   locust -f ASR/asr_latency.py --host=https://core-v1.ai4inclusion.org \\")
+    print("   locust -f TTS/tts_latency.py --host=https://core-v1.ai4inclusion.org \\")
     print("          --headless -u 10 -r 2 --run-time 60s")
     print("\n3. Distributed mode (master):")
-    print("   locust -f ASR/asr_latency.py --host=https://core-v1.ai4inclusion.org --master")
+    print("   locust -f TTS/tts_latency.py --host=https://core-v1.ai4inclusion.org --master")
     print("\n4. Distributed mode (worker):")
-    print("   locust -f ASR/asr_latency.py --worker --master-host=<master-ip>")
+    print("   locust -f TTS/tts_latency.py --worker --master-host=<master-ip>")
     print("\nOptions:")
     print("  -u, --users       Number of concurrent users")
     print("  -r, --spawn-rate  Spawn rate (users per second)")
