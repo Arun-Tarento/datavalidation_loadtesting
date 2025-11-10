@@ -1,16 +1,16 @@
 """
-NMT Load Testing Script with Locust Integration
-Tests the latency of NMT service at https://core-v1.ai4inclusion.org/
+ASR Load Testing Script with Locust Integration
+Tests the latency of ASR service at https://core-v1.ai4inclusion.org/
 
 Usage:
     # Web UI mode (default)
-    locust -f NMT/nmt_latency.py --host=https://core-v1.ai4inclusion.org
+    locust -f Load_testing_scripts/asr_latency.py --host=https://core-v1.ai4inclusion.org
 
     # Headless mode
-    locust -f NMT/nmt_latency.py --host=https://core-v1.ai4inclusion.org --headless -u 10 -r 2 --run-time 60s
+    locust -f Load_testing_scripts/asr_latency.py --host=https://core-v1.ai4inclusion.org --headless -u 10 -r 2 --run-time 60s
 
     # With custom host
-    locust -f NMT/nmt_latency.py --host=https://your-custom-host
+    locust -f Load_testing_scripts/asr_latency.py --host=https://your-custom-host
 """
 
 import os
@@ -23,6 +23,9 @@ from dotenv import load_dotenv
 from locust import HttpUser, task, between, events
 from locust.runners import MasterRunner, WorkerRunner
 
+from collections import Counter
+_status_counts = Counter()
+
 # Load environment variables
 load_dotenv()
 
@@ -32,8 +35,8 @@ throughput_samples = []  # List of (timestamp, rps) tuples
 payload_sizes = []  # List of payload sizes in bytes
 
 
-class NMTConfig:
-    """Configuration handler for NMT load testing"""
+class ASRConfig:
+    """Configuration handler for ASR load testing"""
 
     def __init__(self):
         """Load configuration from environment variables"""
@@ -43,42 +46,71 @@ class NMTConfig:
         self.username = os.getenv("USERNAME")
         self.password = os.getenv("PASSWORD")
 
-        # NMT Service Configuration
-        self.service_id = os.getenv("NMT_SERVICE_ID", "indictrans-v2-all")
-        self.source_language = os.getenv("NMT_SOURCE_LANGUAGE", "hi")
-        self.target_language = os.getenv("NMT_TARGET_LANGUAGE", "ta")
+        # ASR Service Configuration
+        self.service_id = os.getenv("ASR_SERVICE_ID", "ai4bharat/indictasr")
+        self.source_language = os.getenv("ASR_SOURCE_LANGUAGE", "hi")
         self.control_config = self._parse_control_config()
 
-        # Load NMT samples
-        self.nmt_samples = self._load_nmt_samples()
+        # Audio Configuration
+        self.audio_format = os.getenv("AUDIO_FORMAT", "wav")
+        self.sampling_rate = int(os.getenv("SAMPLING_RATE", "16000"))
+        self.transcription_format = os.getenv("TRANSCRIPTION_FORMAT", "transcript")
+        self.best_token_count = int(os.getenv("BEST_TOKEN_COUNT", "0"))
+        self.encoding = os.getenv("ASR_ENCODING", "base64")
+        self.preprocessors = self._parse_list_config("ASR_PREPROCESSORS", ["vad", "denoise"])
+        self.postprocessors = self._parse_list_config("ASR_POSTPROCESSORS", ["lm", "punctuation"])
+
+        # Load audio samples
+        self.audio_samples = self._load_audio_samples()
 
         # Validate configuration
         self._validate_config()
 
     def _parse_control_config(self) -> Dict[str, Any]:
         """Parse controlConfig from environment variable"""
-        control_config_str = os.getenv("NMT_CONTROL_CONFIG", '{"dataTracking":false}')
+        control_config_str = os.getenv("ASR_CONTROL_CONFIG", "{}")
         try:
             return json.loads(control_config_str)
         except json.JSONDecodeError:
-            print(f"Warning: Invalid JSON in NMT_CONTROL_CONFIG, using default")
-            return {"dataTracking": False}
+            print(f"Warning: Invalid JSON in ASR_CONTROL_CONFIG, using empty dict")
+            return {}
 
-    def _load_nmt_samples(self) -> List[Dict[str, str]]:
-        """Load NMT samples from JSON file"""
-        nmt_file_path = os.getenv("NMT_SAMPLES_FILE", "NMT/nmt_samples.json")
+    def _parse_list_config(self, key: str, default: List[str]) -> List[str]:
+        """Parse list configuration from environment variable"""
+        config_str = os.getenv(key, "")
+        if not config_str:
+            return default
         try:
-            with open(nmt_file_path, 'r') as f:
+            return json.loads(config_str)
+        except json.JSONDecodeError:
+            print(f"Warning: Invalid JSON in {key}, using default")
+            return default
+
+    def _load_audio_samples(self) -> List[str]:
+        """Load audio samples from JSON file"""
+        audio_file_path = os.getenv("AUDIO_SAMPLES_FILE", "test_samples/asr/audio_samples.json.example")
+
+        # Convert to absolute path if it's relative
+        if not os.path.isabs(audio_file_path):
+            # Get the directory of this script
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            # Go up one level to the project root
+            project_root = os.path.dirname(script_dir)
+            audio_file_path = os.path.join(project_root, audio_file_path)
+
+        try:
+            with open(audio_file_path, 'r') as f:
                 data = json.load(f)
-                samples = data.get("nmt_samples", [])
+                samples = data.get("audio_samples", [])
                 if samples:
-                    print(f"Loaded {len(samples)} NMT samples from {nmt_file_path}")
+                    print(f"Loaded {len(samples)} audio samples from {audio_file_path}")
                 return samples
         except FileNotFoundError:
-            print(f"Error: NMT samples file not found at {nmt_file_path}")
+            print(f"Error: Audio samples file not found at {audio_file_path}")
+            print(f"Current working directory: {os.getcwd()}")
             return []
         except json.JSONDecodeError:
-            print(f"Error: Invalid JSON in NMT samples file")
+            print(f"Error: Invalid JSON in audio samples file")
             return []
 
     def _validate_config(self):
@@ -86,28 +118,33 @@ class NMTConfig:
         if not self.auth_token:
             raise ValueError("AUTH_TOKEN is required in .env file")
         if not self.service_id:
-            raise ValueError("NMT_SERVICE_ID is required in .env file")
+            raise ValueError("ASR_SERVICE_ID is required in .env file")
         if not self.source_language:
-            raise ValueError("NMT_SOURCE_LANGUAGE is required in .env file")
-        if not self.target_language:
-            raise ValueError("NMT_TARGET_LANGUAGE is required in .env file")
-        if not self.nmt_samples:
-            raise ValueError("No NMT samples found. Please check nmt_samples.json")
+            raise ValueError("ASR_SOURCE_LANGUAGE is required in .env file")
+        if not self.audio_samples:
+            raise ValueError("No audio samples found. Please check audio_samples.json")
 
-    def build_payload(self, source_text: str) -> Dict[str, Any]:
+    def build_payload(self, audio_content: str) -> Dict[str, Any]:
         """Build the API payload"""
         return {
-            "input": [
+            "audio": [
                 {
-                    "source": source_text
+                    "audioContent": audio_content,
+                    # "audioUri": audio_uri
                 }
             ],
             "config": {
                 "language": {
-                    "sourceLanguage": self.source_language,
-                    "targetLanguage": self.target_language
+                    "sourceLanguage": self.source_language
                 },
-                "serviceId": self.service_id
+                "serviceId": self.service_id,
+                "audioFormat": self.audio_format,
+                "samplingRate": self.sampling_rate,
+                "transcriptionFormat": self.transcription_format,
+                "bestTokenCount": self.best_token_count,
+                "encoding": self.encoding,
+                "preProcessors": self.preprocessors,
+                "postProcessors": self.postprocessors
             },
             "controlConfig": self.control_config
         }
@@ -120,18 +157,17 @@ class NMTConfig:
             "Authorization": self.auth_token
         }
 
-    def get_random_nmt_sample(self) -> str:
-        """Get a random NMT sample from the loaded samples"""
-        sample = random.choice(self.nmt_samples)
-        return sample.get("source", "")
+    def get_random_audio_sample(self) -> str:
+        """Get a random audio sample from the loaded samples"""
+        return random.choice(self.audio_samples)
 
 
-# Initialize global configuration
-config = NMTConfig()
+# Initialize global configuration (will be created fresh in each user)
+# config = ASRConfig()  # Commented out to avoid caching
 
 
-class NMTUser(HttpUser):
-    """Locust User class for NMT load testing"""
+class ASRUser(HttpUser):
+    """Locust User class for ASR load testing"""
 
     # Wait time between tasks (in seconds)
     # Can be configured via environment variable
@@ -142,21 +178,32 @@ class NMTUser(HttpUser):
 
     def on_start(self):
         """Called when a simulated user starts"""
-        self.config = config
-        print(f"Starting NMT User - Service: {self.config.service_id}, "
-              f"Language: {self.config.source_language} -> {self.config.target_language}")
+        try:
+            # Reload .env to get fresh config
+            load_dotenv(override=True)
+            self.config = ASRConfig()  # Create fresh config for each user
+            print(f"Starting ASR User - Service: {self.config.service_id}, Language: {self.config.source_language}")
+        except Exception as e:
+            print(f"ERROR in ASR User on_start: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
 
     @task
-    def nmt_request(self):
+    def asr_request(self):
         """
-        Task to send NMT request
+        Task to send ASR request
         This is the main load testing task that will be executed repeatedly
         """
-        # Get random NMT sample
-        source_text = self.config.get_random_nmt_sample()
+        try:
+            # Get random audio sample
+            audio_content = self.config.get_random_audio_sample()
 
-        # Build payload
-        payload = self.config.build_payload(source_text)
+            # Build payload
+            payload = self.config.build_payload(audio_content)
+        except Exception as e:
+            print(f"ERROR building ASR payload: {e}")
+            return
 
         # Track payload size
         global payload_sizes
@@ -167,81 +214,79 @@ class NMTUser(HttpUser):
         headers = self.config.get_headers()
 
         # Send request with Locust's built-in metrics tracking
-        with self.client.post(
-            "/api/v1/nmt/inference",
-            json=payload,
-            headers=headers,
-            catch_response=True,
-            name="NMT Request"
-        ) as response:
+        try:
+            with self.client.post(
+                "/api/v1/asr/inference",
+                json=payload,
+                headers=headers,
+                catch_response=True,
+                name="ASR Request",
+                timeout=60  # 60 second timeout for large audio files
+            ) as response:
 
-            if response.status_code != 200:
-                self._track_failure()
-                response.failure(f"HTTP {response.status_code}: {response.text[:200]}")
-                return
+                if response.status_code != 200:
+                    self._track_failure()
+                    response.failure(f"HTTP {response.status_code}: {response.text[:200]}")
+                    return
 
-            # JSON parse
+                # JSON parse
+                try:
+                    data = response.json()
+                except ValueError:
+                    self._track_failure()
+                    response.failure("Response not valid JSON")
+                    return
+
+                # Validate 'output' exists and is a non-empty list
+                output = data.get("output")
+                if not isinstance(output, list) or len(output) == 0:
+                    self._track_failure()
+                    response.failure("Missing or empty 'output' array in response")
+                    return
+
+                # Validate first output element is a dict with non-empty 'source' field
+                first = output[0]
+                if not isinstance(first, dict):
+                    self._track_failure()
+                    response.failure("Invalid output[0] format; expected object")
+                    return
+
+                transcript = first.get("source", "")
+                # trim and check non-empty (handles unicode/hindi text too)
+                if not isinstance(transcript, str) or not transcript.strip():
+                    self._track_failure()
+                    response.failure("Empty or missing 'source' in output[0]")
+                    return
+
+                # Optional: you can also inspect nBestTokens if needed
+                # nbest = first.get("nBestTokens")
+
+                # All checks passed -> success
+                response.success()
+
             try:
-                data = response.json()
-            except ValueError:
-                self._track_failure()
-                response.failure("Response not valid JSON")
-                return
-
-            # Validate 'output' exists and is a non-empty list
-            output = data.get("output")
-            if not isinstance(output, list) or len(output) == 0:
-                self._track_failure()
-                response.failure("Missing or empty 'output' array in response")
-                return
-
-            # Validate first output element is a dict with a non-empty translated text field
-            first = output[0]
-            if not isinstance(first, dict):
-                self._track_failure()
-                response.failure("Invalid output[0] format; expected object")
-                return
-
-            # Common keys to look for in NMT responses (be permissive)
-            translated_text = (
-                first.get("target")
-                or first.get("translation")
-                or first.get("translatedText")
-                or first.get("text")
-                or first.get("output")
-            )
-
-            if not isinstance(translated_text, str) or not translated_text.strip():
-                self._track_failure()
-                response.failure("Empty or missing translated text in output[0]")
-                return
-
-            # Optional: basic sanity checks (length ratio, identical source->target detection)
-            try:
-                src = payload.get("input", [{}])[0].get("source", "")
-                if isinstance(src, str) and src.strip():
-                    # if translation equals source exactly, mark as warning/failure (adjust as needed)
-                    if str(translated_text).strip() == str(src).strip():
-                        self._track_failure()
-                        response.failure("Translated text identical to source (possible failure)")
-                        return
-                    # optional: extremely short translations may indicate an error
-                    if len(str(translated_text).split()) < 1:
-                        self._track_failure()
-                        response.failure("Translated text too short")
-                        return
+                _status_counts[str(response.status_code)] += 1
             except Exception:
-                # don't crash — treat as non-fatal unless you want to enforce stricter checks
                 pass
 
-            # All checks passed -> success
-            response.success()
+        except Exception as e:
+            # Catch timeout and other exceptions
+            self._track_failure()
+            print(f"ASR Request Exception: {e}")
+            self.environment.events.request.fire(
+                request_type="POST",
+                name="ASR Request",
+                response_time=0,
+                response_length=0,
+                exception=e,
+            )
 
     def _track_failure(self):
         """Track the first failure timestamp"""
         global first_failure_time
         if first_failure_time is None:
             first_failure_time = time.time()
+
 
 
 # Locust event handlers for custom reporting
@@ -254,13 +299,17 @@ def on_test_start(environment, **kwargs):
     throughput_samples = []
     payload_sizes = []
 
+    # Create config instance for display
+    load_dotenv(override=True)
+    test_config = ASRConfig()
     print("\n" + "="*70)
-    print("NMT LATENCY LOAD TEST STARTED")
+    print("ASR LATENCY LOAD TEST STARTED")
     print("="*70)
-    print(f"Service ID: {config.service_id}")
-    print(f"Source Language: {config.source_language}")
-    print(f"Target Language: {config.target_language}")
-    print(f"NMT Samples Loaded: {len(config.nmt_samples)}")
+    print(f"Service ID: {test_config.service_id}")
+    print(f"Source Language: {test_config.source_language}")
+    print(f"Audio Format: {test_config.audio_format}")
+    print(f"Sampling Rate: {test_config.sampling_rate}")
+    print(f"Audio Samples Loaded: {len(test_config.audio_samples)}")
     print("="*70 + "\n")
 
     # Start periodic throughput tracking
@@ -277,7 +326,7 @@ def on_test_start(environment, **kwargs):
                         current_time = time.time()
                         current_rps = stats.current_rps if hasattr(stats, 'current_rps') else stats.total_rps
                         throughput_samples.append((current_time, current_rps))
-                    except Exception as e:
+                    except Exception:
                         # Silently continue if stats access fails
                         pass
                     # Use shorter sleep intervals for more responsive shutdown
@@ -305,7 +354,7 @@ def on_test_stop(environment, **kwargs):
         environment._throughput_stop_event.set()
 
     print("\n" + "="*70)
-    print("NMT LATENCY LOAD TEST COMPLETED")
+    print("ASR LATENCY LOAD TEST COMPLETED")
     print("="*70)
 
     # Get statistics
@@ -314,18 +363,22 @@ def on_test_stop(environment, **kwargs):
     # Print summary
     print(f"\nTotal Requests: {stats.total.num_requests}")
     print(f"Failed Requests: {stats.total.num_failures}")
-    print(f"Success Rate: {((stats.total.num_requests - stats.total.num_failures) / stats.total.num_requests * 100):.2f}%")
 
-    print(f"\nResponse Time Statistics (milliseconds):")
-    print(f"  Min:     {stats.total.min_response_time:.2f}")
-    print(f"  Max:     {stats.total.max_response_time:.2f}")
-    print(f"  Median:  {stats.total.median_response_time:.2f}")
-    print(f"  Average: {stats.total.avg_response_time:.2f}")
-    print(f"  P95:     {stats.total.get_response_time_percentile(0.95):.2f}")
-    print(f"  P99:     {stats.total.get_response_time_percentile(0.99):.2f}")
+    if stats.total.num_requests > 0:
+        print(f"Success Rate: {((stats.total.num_requests - stats.total.num_failures) / stats.total.num_requests * 100):.2f}%")
 
-    print(f"\nRequests per second: {stats.total.total_rps:.2f}")
-    print(f"Average Content Size: {stats.total.avg_content_length:.2f} bytes")
+        print(f"\nResponse Time Statistics (milliseconds):")
+        print(f"  Min:     {stats.total.min_response_time:.2f}")
+        print(f"  Max:     {stats.total.max_response_time:.2f}")
+        print(f"  Median:  {stats.total.median_response_time:.2f}")
+        print(f"  Average: {stats.total.avg_response_time:.2f}")
+        print(f"  P95:     {stats.total.get_response_time_percentile(0.95):.2f}")
+        print(f"  P99:     {stats.total.get_response_time_percentile(0.99):.2f}")
+
+        print(f"\nRequests per second: {stats.total.total_rps:.2f}")
+        print(f"Average Content Size: {stats.total.avg_content_length:.2f} bytes")
+    else:
+        print("No requests were made during the test")
 
     print("="*70 + "\n")
 
@@ -338,6 +391,10 @@ def save_results_to_json(environment):
     """Save test results to JSON file"""
     global first_failure_time, throughput_samples, payload_sizes
     stats = environment.stats
+
+    # Create config instance for saving results
+    load_dotenv(override=True)
+    save_config = ASRConfig()
 
     # Calculate error rate
     error_rate = (stats.total.num_failures / stats.total.num_requests * 100) if stats.total.num_requests > 0 else 0
@@ -392,9 +449,11 @@ def save_results_to_json(environment):
 
     output = {
         "test_config": {
-            "service_id": config.service_id,
-            "source_language": config.source_language,
-            "target_language": config.target_language
+            "service_id": save_config.service_id,
+            "source_language": save_config.source_language,
+            "audio_format": save_config.audio_format,
+            "sampling_rate": save_config.sampling_rate,
+            "transcription_format": save_config.transcription_format
         },
         "statistics": {
             "total_requests": stats.total.num_requests,
@@ -441,33 +500,43 @@ def save_results_to_json(environment):
             }
 
     # Save to file
-    filename = "nmt_latency_locust_results.json"
+    os.makedirs("results", exist_ok=True)
+    filename = "results/asr_latency_locust_results.json"
     with open(filename, 'w') as f:
         json.dump(output, f, indent=2)
 
     print(f"\nDetailed results saved to {filename}")
 
 
+# Custom shape classes for advanced load patterns
+class StepLoadShape:
+    """
+    Example custom load shape - increases users in steps
+    To use: locust -f asr_latency.py --host=... --shape=StepLoadShape
+    """
+    pass
+
+
 if __name__ == "__main__":
     """
     This allows running the script directly, but Locust should be run via CLI:
-    locust -f NMT/nmt_latency.py --host=https://core-v1.ai4inclusion.org
+    locust -f ASR/asr_latency.py --host=http://core-v1.ai4inclusion.org:8080
     """
     import sys
     print("\n" + "="*70)
-    print("NMT Latency Load Testing with Locust")
+    print("ASR Latency Load Testing with Locust")
     print("="*70)
     print("\nTo run this test, use the Locust CLI:")
     print("\n1. Web UI mode (recommended):")
-    print("   locust -f NMT/nmt_latency.py --host=https://core-v1.ai4inclusion.org")
+    print("   locust -f Load_testing_scripts/asr_latency.py --host=https://core-v1.ai4inclusion.org")
     print("   Then open http://localhost:8089 in your browser")
     print("\n2. Headless mode:")
-    print("   locust -f NMT/nmt_latency.py --host=https://core-v1.ai4inclusion.org \\")
+    print("   locust -f Load_testing_scripts/asr_latency.py --host=https://core-v1.ai4inclusion.org \\")
     print("          --headless -u 10 -r 2 --run-time 60s")
     print("\n3. Distributed mode (master):")
-    print("   locust -f NMT/nmt_latency.py --host=https://core-v1.ai4inclusion.org --master")
+    print("   locust -f Load_testing_scripts/asr_latency.py --host=https://core-v1.ai4inclusion.org --master")
     print("\n4. Distributed mode (worker):")
-    print("   locust -f NMT/nmt_latency.py --worker --master-host=<master-ip>")
+    print("   locust -f Load_testing_scripts/asr_latency.py --worker --master-host=<master-ip>")
     print("\nOptions:")
     print("  -u, --users       Number of concurrent users")
     print("  -r, --spawn-rate  Spawn rate (users per second)")

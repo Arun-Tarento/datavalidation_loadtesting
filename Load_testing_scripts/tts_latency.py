@@ -4,13 +4,13 @@ Tests the latency of TTS service at https://core-v1.ai4inclusion.org/
 
 Usage:
     # Web UI mode (default)
-    locust -f TTS/tts_latency.py --host=https://core-v1.ai4inclusion.org
+    locust -f Load_testing_scripts/tts_latency.py --host=https://core-v1.ai4inclusion.org
 
     # Headless mode
-    locust -f TTS/tts_latency.py --host=https://core-v1.ai4inclusion.org --headless -u 10 -r 2 --run-time 60s
+    locust -f Load_testing_scripts/tts_latency.py --host=https://core-v1.ai4inclusion.org --headless -u 10 -r 2 --run-time 60s
 
     # With custom host
-    locust -f TTS/tts_latency.py --host=https://your-custom-host
+    locust -f Load_testing_scripts/tts_latency.py --host=https://your-custom-host
 """
 
 import os
@@ -68,7 +68,16 @@ class TTSConfig:
 
     def _load_tts_samples(self) -> List[Dict[str, str]]:
         """Load TTS samples from JSON file"""
-        tts_file_path = os.getenv("TTS_SAMPLES_FILE", "TTS/tts_samples.json")
+        tts_file_path = os.getenv("TTS_SAMPLES_FILE", "test_samples/tts/tts_samples.json")
+
+        # Convert to absolute path if it's relative
+        if not os.path.isabs(tts_file_path):
+            # Get the directory of this script
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            # Go up one level to the project root
+            project_root = os.path.dirname(script_dir)
+            tts_file_path = os.path.join(project_root, tts_file_path)
+
         try:
             with open(tts_file_path, 'r') as f:
                 data = json.load(f)
@@ -78,6 +87,7 @@ class TTSConfig:
                 return samples
         except FileNotFoundError:
             print(f"Error: TTS samples file not found at {tts_file_path}")
+            print(f"Current working directory: {os.getcwd()}")
             return []
         except json.JSONDecodeError:
             print(f"Error: Invalid JSON in TTS samples file")
@@ -128,8 +138,8 @@ class TTSConfig:
         return sample.get("source", "")
 
 
-# Initialize global configuration
-config = TTSConfig()
+# Initialize global configuration (will be created fresh in each user)
+# config = TTSConfig()  # Commented out to avoid caching
 
 
 class TTSUser(HttpUser):
@@ -144,9 +154,17 @@ class TTSUser(HttpUser):
 
     def on_start(self):
         """Called when a simulated user starts"""
-        self.config = config
-        print(f"Starting TTS User - Service: {self.config.service_id}, "
-              f"Language: {self.config.source_language}, Gender: {self.config.gender}")
+        try:
+            # Reload .env to get fresh config
+            load_dotenv(override=True)
+            self.config = TTSConfig()  # Create fresh config for each user
+            print(f"Starting TTS User - Service: {self.config.service_id}, "
+                  f"Language: {self.config.source_language}, Gender: {self.config.gender}")
+        except Exception as e:
+            print(f"ERROR in TTS User on_start: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
 
     @task
     def tts_request(self):
@@ -250,15 +268,18 @@ def on_test_start(environment, **kwargs):
     throughput_samples = []
     payload_sizes = []
 
+    # Create config instance for display
+    load_dotenv(override=True)
+    test_config = TTSConfig()
     print("\n" + "="*70)
     print("TTS LATENCY LOAD TEST STARTED")
     print("="*70)
-    print(f"Service ID: {config.service_id}")
-    print(f"Source Language: {config.source_language}")
-    print(f"Gender: {config.gender}")
-    print(f"Sampling Rate: {config.sampling_rate}")
-    print(f"Audio Format: {config.audio_format}")
-    print(f"TTS Samples Loaded: {len(config.tts_samples)}")
+    print(f"Service ID: {test_config.service_id}")
+    print(f"Source Language: {test_config.source_language}")
+    print(f"Gender: {test_config.gender}")
+    print(f"Sampling Rate: {test_config.sampling_rate}")
+    print(f"Audio Format: {test_config.audio_format}")
+    print(f"TTS Samples Loaded: {len(test_config.tts_samples)}")
     print("="*70 + "\n")
 
     # Start periodic throughput tracking
@@ -341,6 +362,10 @@ def save_results_to_json(environment):
     global first_failure_time, throughput_samples, payload_sizes
     stats = environment.stats
 
+    # Create config instance for saving results
+    load_dotenv(override=True)
+    save_config = TTSConfig()
+
     # Calculate error rate
     error_rate = (stats.total.num_failures / stats.total.num_requests * 100) if stats.total.num_requests > 0 else 0
 
@@ -394,11 +419,11 @@ def save_results_to_json(environment):
 
     output = {
         "test_config": {
-            "service_id": config.service_id,
-            "source_language": config.source_language,
-            "gender": config.gender,
-            "sampling_rate": config.sampling_rate,
-            "audio_format": config.audio_format
+            "service_id": save_config.service_id,
+            "source_language": save_config.source_language,
+            "gender": save_config.gender,
+            "sampling_rate": save_config.sampling_rate,
+            "audio_format": save_config.audio_format
         },
         "statistics": {
             "total_requests": stats.total.num_requests,
@@ -445,7 +470,8 @@ def save_results_to_json(environment):
             }
 
     # Save to file
-    filename = "tts_latency_locust_results.json"
+    os.makedirs("results", exist_ok=True)
+    filename = "results/tts_latency_locust_results.json"
     with open(filename, 'w') as f:
         json.dump(output, f, indent=2)
 
@@ -463,15 +489,15 @@ if __name__ == "__main__":
     print("="*70)
     print("\nTo run this test, use the Locust CLI:")
     print("\n1. Web UI mode (recommended):")
-    print("   locust -f TTS/tts_latency.py --host=https://core-v1.ai4inclusion.org")
+    print("   locust -f Load_testing_scripts/tts_latency.py --host=https://core-v1.ai4inclusion.org")
     print("   Then open http://localhost:8089 in your browser")
     print("\n2. Headless mode:")
-    print("   locust -f TTS/tts_latency.py --host=https://core-v1.ai4inclusion.org \\")
+    print("   locust -f Load_testing_scripts/tts_latency.py --host=https://core-v1.ai4inclusion.org \\")
     print("          --headless -u 10 -r 2 --run-time 60s")
     print("\n3. Distributed mode (master):")
-    print("   locust -f TTS/tts_latency.py --host=https://core-v1.ai4inclusion.org --master")
+    print("   locust -f Load_testing_scripts/tts_latency.py --host=https://core-v1.ai4inclusion.org --master")
     print("\n4. Distributed mode (worker):")
-    print("   locust -f TTS/tts_latency.py --worker --master-host=<master-ip>")
+    print("   locust -f Load_testing_scripts/tts_latency.py --worker --master-host=<master-ip>")
     print("\nOptions:")
     print("  -u, --users       Number of concurrent users")
     print("  -r, --spawn-rate  Spawn rate (users per second)")

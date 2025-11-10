@@ -31,15 +31,16 @@ nmt_latency_locust_results.json
 *_failures.csv
 *_exceptions.csv
 *.html
-!ASR/README.md
-!NMT/README.md
+!Readme/*.md
 
 # Sample data files
 *samples*.json
 audio_samples.json
 nmt_samples.json
-ASR/audio_samples.json
-NMT/nmt_samples.json
+tts_samples.json
+asr/audio_samples.json
+nmt/nmt_samples.json
+tts/tts_samples.json
 
 # Audio files
 *.wav

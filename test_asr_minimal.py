@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Load audio sample
-with open('ASR/audio_samples.json', 'r') as f:
+with open('asr/audio_samples.json', 'r') as f:
     data = json.load(f)
     audio_content = data['audio_samples'][0]
 

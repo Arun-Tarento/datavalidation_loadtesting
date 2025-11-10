@@ -9,7 +9,7 @@ import wave
 import io
 
 # Load audio sample
-with open('ASR/audio_samples.json', 'r') as f:
+with open('asr/audio_samples.json', 'r') as f:
     data = json.load(f)
     audio_base64 = data['audio_samples'][0]
 

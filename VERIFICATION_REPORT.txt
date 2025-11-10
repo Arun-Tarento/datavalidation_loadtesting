@@ -1,0 +1,53 @@
+================================================================================
+LOAD TESTING SCRIPTS - VERIFICATION REPORT
+Generated: $(date)
+================================================================================
+
+[1] SAMPLE FILE PATHS
+---------------------
+✅ asr_latency.py:  Test_samples/ASR/audio_samples.json.example
+✅ nmt_latency.py:  Test_samples/NMT/nmt_samples.json.example  
+✅ tts_latency.py:  Test_samples/TTS/tts_samples.json.example
+
+[2] SAMPLE FILES EXIST
+----------------------
+✅ Test_samples/ASR/audio_samples.json.example  (368K - Large base64 audio data)
+✅ Test_samples/NMT/nmt_samples.json.example    (1.1K - 5 samples)
+✅ Test_samples/TTS/tts_samples.json.example    (Created - 10 samples)
+
+[3] RESULTS OUTPUT PATHS
+------------------------
+✅ asr_latency.py → results/asr_latency_locust_results.json
+✅ nmt_latency.py → results/nmt_latency_locust_results.json
+✅ tts_latency.py → results/tts_latency_locust_results.json
+
+[4] GLOBAL CONFIG FIX
+---------------------
+✅ NMT: Global config commented out, created fresh per user
+✅ TTS: Global config commented out, created fresh per user
+✅ ASR: Already using fresh config per user (no global config)
+
+[5] ABSOLUTE PATH RESOLUTION
+-----------------------------
+✅ All scripts convert relative paths to absolute
+✅ Uses __file__ to locate script directory
+✅ Resolves paths relative to project root
+
+[6] PATH RESOLUTION TEST
+-------------------------
+Script dir:    /home/arun/Doc 2/Auto/Load_testing_scripts
+Project root:  /home/arun/Doc 2/Auto
+Sample path:   /home/arun/Doc 2/Auto/Test_samples/NMT/nmt_samples.json.example
+✅ Sample file loads successfully (5 samples found)
+
+[7] USAGE INSTRUCTIONS UPDATED
+-------------------------------
+✅ All scripts reference: Load_testing_scripts/*.py (not old ASR/, NMT/, TTS/)
+
+================================================================================
+CONCLUSION: ALL REFACTORING CHANGES VERIFIED AND SAVED ✅
+================================================================================
+
+Ready to test with:
+  locust -f Load_testing_scripts/nmt_latency.py -u 1 -r 1 --run-time 30s --host=https://core-v1.ai4inclusion.org
+

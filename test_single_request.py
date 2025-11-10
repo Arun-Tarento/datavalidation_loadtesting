@@ -11,7 +11,7 @@ import json
 import requests
 
 # Read audio
-with open('ASR/audio_samples.json') as f:
+with open('asr/audio_samples.json') as f:
     audio_content = json.load(f)['audio_samples'][0]
 
 # Build payload with all fields

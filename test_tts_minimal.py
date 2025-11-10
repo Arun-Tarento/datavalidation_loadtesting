@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Load text sample
-with open('TTS/tts_samples.json', 'r') as f:
+with open('tts/tts_samples.json', 'r') as f:
     data = json.load(f)
     source_text = data['tts_samples'][0]['source']
 
