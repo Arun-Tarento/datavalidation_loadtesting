@@ -31,16 +31,16 @@ nmt_latency_locust_results.json
 *_failures.csv
 *_exceptions.csv
 *.html
-!Readme/*.md
+!Load_tesing_AI4I_Core/load_testing_Readme/*.md
 
 # Sample data files
 *samples*.json
 audio_samples.json
 nmt_samples.json
 tts_samples.json
-asr/audio_samples.json
-nmt/nmt_samples.json
-tts/tts_samples.json
+load_testing_test_samples/asr/audio_samples.json
+load_testing_test_samples/nmt/nmt_samples.json
+load_testing_test_samples/tts/tts_samples.json
 
 # Audio files
 *.wav
