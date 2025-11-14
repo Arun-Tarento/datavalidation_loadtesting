@@ -1,16 +1,16 @@
 """
-NMT Load Testing Script with Locust Integration for DPG
-Tests the latency of NMT service at http://13.204.164.186/
+NER (Named Entity Recognition) Load Testing Script with Locust Integration for DPG
+Tests the latency of NER service at http://13.204.164.186:8000/
 
 Usage:
     # Web UI mode (default)
-    locust -f load_testing_scripts/nmt_load_test.py --host=http://13.204.164.186
+    locust -f load_testing_scripts/ner_test.py --host=http://13.204.164.186:8000
 
     # Headless mode
-    locust -f load_testing_scripts/nmt_load_test.py --host=http://13.204.164.186 --headless -u 10 -r 2 --run-time 60s
+    locust -f load_testing_scripts/ner_test.py --host=http://13.204.164.186:8000 --headless -u 10 -r 2 --run-time 60s
 
     # With custom host
-    locust -f load_testing_scripts/nmt_load_test.py --host=http://your-custom-host
+    locust -f load_testing_scripts/ner_test.py --host=http://your-custom-host
 """
 
 import os
@@ -33,6 +33,7 @@ first_failure_time: Optional[float] = None
 throughput_samples = []  # List of (timestamp, rps) tuples
 payload_sizes = []  # List of payload sizes in bytes
 input_char_counts = []  # List of input text character counts
+input_token_counts = []  # List of input text token counts (word-based)
 retry_count = 0  # Total number of automatic retries
 retry_failures = 0  # Number of retry attempts that also failed
 
@@ -67,12 +68,12 @@ class RetryTrackingAdapter(HTTPAdapter):
         super().__init__(max_retries=retry_strategy, *args, **kwargs)
 
 
-class NMTConfig:
-    """Configuration handler for NMT load testing"""
+class NERConfig:
+    """Configuration handler for NER load testing"""
 
     def __init__(self):
         """Load configuration from environment variables"""
-        print("NMTConfig.__init__() starting...")
+        print("NERConfig.__init__() starting...")
 
         # Authentication
         self.auth_token = os.getenv("AUTH_TOKEN", "").strip('"')
@@ -80,35 +81,31 @@ class NMTConfig:
         self.username = os.getenv("USERNAME")
         self.password = os.getenv("PASSWORD")
 
-        # NMT Service Configuration
-        self.service_id = os.getenv("NMT_SERVICE_ID", "ai4bharat/indictrans--gpu-t4")
-        self.source_language = os.getenv("NMT_SOURCE_LANGUAGE", "hi")
-        self.source_script = os.getenv("NMT_SOURCE_SCRIPT", "Deva")
-        self.target_language = os.getenv("NMT_TARGET_LANGUAGE", "ta")
-        self.target_script = os.getenv("NMT_TARGET_SCRIPT", "Taml")
+        # NER Service Configuration
+        self.service_id = os.getenv("NER_SERVICE_ID", "bhashini/ai4bharat/indic-ner")
         self.control_config = self._parse_control_config()
 
-        # Load NMT samples
-        print("About to call _load_nmt_samples()...")
-        self.nmt_samples = self._load_nmt_samples()
-        print(f"_load_nmt_samples() returned: {len(self.nmt_samples)} samples")
+        # Load NER samples
+        print("About to call _load_ner_samples()...")
+        self.ner_samples = self._load_ner_samples()
+        print(f"_load_ner_samples() returned: {len(self.ner_samples)} samples")
 
         # Validate configuration
         self._validate_config()
 
     def _parse_control_config(self) -> Dict[str, Any]:
         """Parse controlConfig from environment variable"""
-        control_config_str = os.getenv("NMT_CONTROL_CONFIG", '{"dataTracking":true}')
+        control_config_str = os.getenv("NER_CONTROL_CONFIG", '{"dataTracking":true}')
         try:
             return json.loads(control_config_str)
         except json.JSONDecodeError:
-            print(f"Warning: Invalid JSON in NMT_CONTROL_CONFIG, using default")
+            print(f"Warning: Invalid JSON in NER_CONTROL_CONFIG, using default")
             return {"dataTracking": True}
 
-    def _load_nmt_samples(self) -> List[Dict[str, str]]:
-        """Load NMT samples from JSON file"""
+    def _load_ner_samples(self) -> List[Dict[str, str]]:
+        """Load NER samples from JSON file"""
         # Get file path - use environment variable or default
-        file_path = os.getenv("NMT_SAMPLES_FILE", "load_testing_test_samples/nmt/nmt_samples.json")
+        file_path = os.getenv("NER_SAMPLES_FILE", "load_testing_test_samples/ner/ner_samples.json")
 
         # Make it absolute if it's relative
         if not os.path.isabs(file_path):
@@ -118,14 +115,14 @@ class NMTConfig:
             project_root = os.path.dirname(parent_dir)
             file_path = os.path.join(project_root, file_path)
 
-        print(f"\n=== LOADING NMT SAMPLES ===")
+        print(f"\n=== LOADING NER SAMPLES ===")
         print(f"Path: {file_path}")
         print(f"Exists: {os.path.exists(file_path)}")
 
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                samples = data.get("nmt_samples", [])
+                samples = data.get("ner_samples", [])
                 print(f"Loaded: {len(samples)} samples")
                 print(f"=== DONE ===\n")
                 return samples
@@ -139,32 +136,25 @@ class NMTConfig:
         if not self.auth_token:
             raise ValueError("AUTH_TOKEN is required in .env file")
         if not self.service_id:
-            raise ValueError("NMT_SERVICE_ID is required in .env file")
-        if not self.source_language:
-            raise ValueError("NMT_SOURCE_LANGUAGE is required in .env file")
-        if not self.target_language:
-            raise ValueError("NMT_TARGET_LANGUAGE is required in .env file")
-        if not self.nmt_samples:
-            raise ValueError("No NMT samples found. Please check nmt_samples.json")
+            raise ValueError("NER_SERVICE_ID is required in .env file")
+        if not self.ner_samples:
+            raise ValueError("No NER samples found. Please check ner_samples.json")
 
-    def build_payload(self, source_text: str) -> Dict[str, Any]:
-        """Build the API payload for DPG endpoint"""
+    def build_payload(self, source_text: str, language: str) -> Dict[str, Any]:
+        """Build the API payload for DPG NER endpoint"""
         return {
-            "controlConfig": self.control_config,
-            "config": {
-                "serviceId": self.service_id,
-                "language": {
-                    "sourceLanguage": self.source_language,
-                    "sourceScriptCode": self.source_script,
-                    "targetLanguage": self.target_language,
-                    "targetScriptCode": self.target_script
-                }
-            },
             "input": [
                 {
                     "source": source_text
                 }
-            ]
+            ],
+            "config": {
+                "language": {
+                    "sourceLanguage": language
+                },
+                "serviceId": self.service_id
+            },
+            "controlConfig": self.control_config
         }
 
     def get_headers(self) -> Dict[str, str]:
@@ -176,14 +166,13 @@ class NMTConfig:
             "Authorization": self.auth_token
         }
 
-    def get_random_nmt_sample(self) -> str:
-        """Get a random NMT sample from the loaded samples"""
-        sample = random.choice(self.nmt_samples)
-        return sample.get("source", "")
+    def get_random_ner_sample(self) -> Dict[str, str]:
+        """Get a random NER sample from the loaded samples"""
+        return random.choice(self.ner_samples)
 
 
-class NMTUser(HttpUser):
-    """Locust User class for NMT load testing"""
+class NERUser(HttpUser):
+    """Locust User class for NER load testing"""
 
     # Wait time between tasks (in seconds)
     # Can be configured via environment variable
@@ -197,41 +186,44 @@ class NMTUser(HttpUser):
         try:
             # Reload .env to get fresh config
             load_dotenv(override=True)
-            self.config = NMTConfig()  # Create fresh config for each user
-
+            self.config = NERConfig()  # Create fresh config for each user
             # Install retry tracking adapter
             adapter = RetryTrackingAdapter()
             self.client.mount("http://", adapter)
             self.client.mount("https://", adapter)
-
-            print(f"Starting NMT User - Service: {self.config.service_id}, "
-                  f"Language: {self.config.source_language} ({self.config.source_script}) -> "
-                  f"{self.config.target_language} ({self.config.target_script})")
+            print(f"Starting NER User - Service: {self.config.service_id}")
         except Exception as e:
-            print(f"ERROR in NMT User on_start: {e}")
+            print(f"ERROR in NER User on_start: {e}")
             import traceback
             traceback.print_exc()
             raise
 
     @task
-    def nmt_request(self):
+    def ner_request(self):
         """
-        Task to send NMT request
+        Task to send NER request
         This is the main load testing task that will be executed repeatedly
         """
-        # Get random NMT sample
-        source_text = self.config.get_random_nmt_sample()
+        # Get random NER sample
+        sample = self.config.get_random_ner_sample()
+        source_text = sample.get("source", "")
+        language = sample.get("language", "hi")
 
         # Build payload
-        payload = self.config.build_payload(source_text)
+        payload = self.config.build_payload(source_text, language)
 
         # Track payload size
-        global payload_sizes, input_char_counts
+        global payload_sizes, input_char_counts, input_token_counts
         payload_size = len(json.dumps(payload).encode('utf-8'))
         payload_sizes.append(payload_size)
 
         # Track input character count
         input_char_counts.append(len(source_text))
+
+        # Track input token count (approximate word-based tokenization)
+        # For NER, tokens are typically words/punctuation separated by whitespace
+        token_count = len(source_text.split())
+        input_token_counts.append(token_count)
 
         # Get headers
         headers = self.config.get_headers()
@@ -241,13 +233,13 @@ class NMTUser(HttpUser):
 
         # Send request with Locust's built-in metrics tracking
         with self.client.post(
-            "/services/inference/translation",
+            "/services/inference/ner",
             params=params,
             json=payload,
             headers=headers,
             catch_response=True,
-            name="NMT Translation Request",
-            timeout=250  # Increased timeout for translation under load
+            name="NER Request",
+            timeout=250  # Increased timeout for NER processing under load
         ) as response:
 
             if response.status_code != 200:
@@ -270,44 +262,32 @@ class NMTUser(HttpUser):
                 response.failure("Missing or empty 'output' array in response")
                 return
 
-            # Validate first output element is a dict with a non-empty translated text field
+            # Validate first output element is a dict
             first = output[0]
             if not isinstance(first, dict):
                 self._track_failure()
                 response.failure("Invalid output[0] format; expected object")
                 return
 
-            # Common keys to look for in NMT responses (be permissive)
-            translated_text = (
-                first.get("target")
-                or first.get("translation")
-                or first.get("translatedText")
-                or first.get("text")
-                or first.get("output")
-            )
-
-            if not isinstance(translated_text, str) or not translated_text.strip():
+            # Check if 'nerPrediction' field exists (contains NER results)
+            ner_prediction = first.get("nerPrediction", [])
+            if not isinstance(ner_prediction, list):
                 self._track_failure()
-                response.failure("Empty or missing translated text in output[0]")
+                response.failure("Missing or invalid 'nerPrediction' field in output[0]")
                 return
 
-            # Optional: basic sanity checks (length ratio, identical source->target detection)
-            try:
-                src = payload.get("input", [{}])[0].get("source", "")
-                if isinstance(src, str) and src.strip():
-                    # if translation equals source exactly, mark as warning/failure (adjust as needed)
-                    if str(translated_text).strip() == str(src).strip():
-                        self._track_failure()
-                        response.failure("Translated text identical to source (possible failure)")
-                        return
-                    # optional: extremely short translations may indicate an error
-                    if len(str(translated_text).split()) < 1:
-                        self._track_failure()
-                        response.failure("Translated text too short")
-                        return
-            except Exception:
-                # don't crash  treat as non-fatal unless you want to enforce stricter checks
-                pass
+            # Optional: Check if source field exists
+            source = first.get("source", "")
+            if not isinstance(source, str) or not source.strip():
+                self._track_failure()
+                response.failure("Missing or empty 'source' field in output[0]")
+                return
+
+            # Optional: Verify nerPrediction has at least some tokens
+            if len(ner_prediction) == 0:
+                self._track_failure()
+                response.failure("Empty 'nerPrediction' array in output[0]")
+                return
 
             # All checks passed -> success
             response.success()
@@ -323,25 +303,24 @@ class NMTUser(HttpUser):
 @events.test_start.add_listener
 def on_test_start(environment, **kwargs):
     """Called when the test starts"""
-    global first_failure_time, throughput_samples, payload_sizes, input_char_counts, retry_count
+    global first_failure_time, throughput_samples, payload_sizes, input_char_counts, input_token_counts, retry_count
     # Reset global tracking variables
     first_failure_time = None
     throughput_samples = []
     payload_sizes = []
     input_char_counts = []
+    input_token_counts = []
     retry_count = 0
     retry_failures = 0
 
     # Create config instance for display
     load_dotenv(override=True)
-    test_config = NMTConfig()
+    test_config = NERConfig()
     print("\n" + "="*70)
-    print("NMT LOAD TEST STARTED - DPG")
+    print("NER LOAD TEST STARTED - DPG")
     print("="*70)
     print(f"Service ID: {test_config.service_id}")
-    print(f"Source Language: {test_config.source_language} ({test_config.source_script})")
-    print(f"Target Language: {test_config.target_language} ({test_config.target_script})")
-    print(f"NMT Samples Loaded: {len(test_config.nmt_samples)}")
+    print(f"NER Samples Loaded: {len(test_config.ner_samples)}")
     print("="*70 + "\n")
 
     # Start periodic throughput tracking
@@ -382,13 +361,13 @@ def on_test_start(environment, **kwargs):
 def on_test_stop(environment, **kwargs):
     """Called when the test stops"""
     global retry_count, retry_failures
-
+    global retry_count
     # Signal throughput thread to stop
     if hasattr(environment, '_throughput_stop_event'):
         environment._throughput_stop_event.set()
 
     print("\n" + "="*70)
-    print("NMT LOAD TEST COMPLETED - DPG")
+    print("NER LOAD TEST COMPLETED - DPG")
     print("="*70)
 
     # Get statistics
@@ -400,18 +379,22 @@ def on_test_stop(environment, **kwargs):
     print(f"Automatic Retries: {retry_count}")
     print(f"  └─ Retry attempts that also failed: {retry_failures}")
     print(f"Actual Server Requests: {stats.total.num_requests + retry_count}")
-    print(f"Success Rate: {((stats.total.num_requests - stats.total.num_failures) / stats.total.num_requests * 100):.2f}%")
 
-    print(f"\nResponse Time Statistics (milliseconds):")
-    print(f"  Min:     {stats.total.min_response_time:.2f}")
-    print(f"  Max:     {stats.total.max_response_time:.2f}")
-    print(f"  Median:  {stats.total.median_response_time:.2f}")
-    print(f"  Average: {stats.total.avg_response_time:.2f}")
-    print(f"  P95:     {stats.total.get_response_time_percentile(0.95):.2f}")
-    print(f"  P99:     {stats.total.get_response_time_percentile(0.99):.2f}")
+    if stats.total.num_requests > 0:
+        print(f"Success Rate: {((stats.total.num_requests - stats.total.num_failures) / stats.total.num_requests * 100):.2f}%")
 
-    print(f"\nRequests per second: {stats.total.total_rps:.2f}")
-    print(f"Average Content Size: {stats.total.avg_content_length:.2f} bytes")
+        print(f"\nResponse Time Statistics (milliseconds):")
+        print(f"  Min:     {stats.total.min_response_time:.2f}")
+        print(f"  Max:     {stats.total.max_response_time:.2f}")
+        print(f"  Median:  {stats.total.median_response_time:.2f}")
+        print(f"  Average: {stats.total.avg_response_time:.2f}")
+        print(f"  P95:     {stats.total.get_response_time_percentile(0.95):.2f}")
+        print(f"  P99:     {stats.total.get_response_time_percentile(0.99):.2f}")
+
+        print(f"\nRequests per second: {stats.total.total_rps:.2f}")
+        print(f"Average Content Size: {stats.total.avg_content_length:.2f} bytes")
+    else:
+        print("No requests were made during the test")
 
     print("="*70 + "\n")
 
@@ -422,12 +405,12 @@ def on_test_stop(environment, **kwargs):
 
 def save_results_to_json(environment):
     """Save test results to JSON file"""
-    global first_failure_time, throughput_samples, payload_sizes, input_char_counts, error_tracking, retry_count, retry_failures
+    global first_failure_time, throughput_samples, payload_sizes, input_char_counts, input_token_counts, error_tracking, retry_count, retry_failures
     stats = environment.stats
 
     # Create config instance for saving results
     load_dotenv(override=True)
-    save_config = NMTConfig()
+    save_config = NERConfig()
 
     # Calculate error rate
     error_rate = (stats.total.num_failures / stats.total.num_requests * 100) if stats.total.num_requests > 0 else 0
@@ -443,6 +426,15 @@ def save_results_to_json(environment):
     else:
         avg_input_chars = 0
         median_input_chars = 0
+
+    # Calculate input token count statistics
+    if input_token_counts:
+        avg_input_tokens = sum(input_token_counts) / len(input_token_counts)
+        sorted_tokens = sorted(input_token_counts)
+        median_input_tokens = sorted_tokens[len(sorted_tokens) // 2] if sorted_tokens else 0
+    else:
+        avg_input_tokens = 0
+        median_input_tokens = 0
 
     # Calculate retry statistics
     actual_server_requests = stats.total.num_requests + retry_count
@@ -496,11 +488,7 @@ def save_results_to_json(environment):
 
     output = {
         "test_config": {
-            "service_id": save_config.service_id,
-            "source_language": save_config.source_language,
-            "source_script": save_config.source_script,
-            "target_language": save_config.target_language,
-            "target_script": save_config.target_script
+            "service_id": save_config.service_id
         },
         "statistics": {
             "total_requests": stats.total.num_requests,
@@ -519,7 +507,9 @@ def save_results_to_json(environment):
             "average_payload_size_bytes": round(avg_payload_size, 2),
             "input_text_statistics": {
                 "average_characters": round(avg_input_chars, 2),
-                "median_characters": median_input_chars
+                "median_characters": median_input_chars,
+                "average_tokens": round(avg_input_tokens, 2),
+                "median_tokens": median_input_tokens
             },
             "response_time_ms": {
                 "min": stats.total.min_response_time,
@@ -564,7 +554,7 @@ def save_results_to_json(environment):
     results_dir = os.path.join(parent_dir, "load_testing_results")
     os.makedirs(results_dir, exist_ok=True)
 
-    filename = os.path.join(results_dir, "nmt_load_test_results.json")
+    filename = os.path.join(results_dir, "ner_load_test_results.json")
     with open(filename, 'w') as f:
         json.dump(output, f, indent=2)
 
@@ -574,23 +564,23 @@ def save_results_to_json(environment):
 if __name__ == "__main__":
     """
     This allows running the script directly, but Locust should be run via CLI:
-    locust -f load_testing_scripts/nmt_load_test.py --host=http://13.204.164.186
+    locust -f load_testing_scripts/ner_test.py --host=http://13.204.164.186:8000
     """
     import sys
     print("\n" + "="*70)
-    print("NMT Load Testing with Locust - DPG")
+    print("NER Load Testing with Locust - DPG")
     print("="*70)
     print("\nTo run this test, use the Locust CLI:")
     print("\n1. Web UI mode (recommended):")
-    print("   locust -f Load_testing_DPG/load_testing_scripts/nmt_load_test.py --host=http://13.204.164.186")
+    print("   locust -f Load_testing_DPG/load_testing_scripts/ner_test.py --host=http://13.204.164.186:8000")
     print("   Then open http://localhost:8089 in your browser")
     print("\n2. Headless mode:")
-    print("   locust -f Load_testing_DPG/load_testing_scripts/nmt_load_test.py --host=http://13.204.164.186 \\")
+    print("   locust -f Load_testing_DPG/load_testing_scripts/ner_test.py --host=http://13.204.164.186:8000 \\")
     print("          --headless -u 10 -r 2 --run-time 60s")
     print("\n3. Distributed mode (master):")
-    print("   locust -f Load_testing_DPG/load_testing_scripts/nmt_load_test.py --host=http://13.204.164.186 --master")
+    print("   locust -f Load_testing_DPG/load_testing_scripts/ner_test.py --host=http://13.204.164.186:8000 --master")
     print("\n4. Distributed mode (worker):")
-    print("   locust -f Load_testing_DPG/load_testing_scripts/nmt_load_test.py --worker --master-host=<master-ip>")
+    print("   locust -f Load_testing_DPG/load_testing_scripts/ner_test.py --worker --master-host=<master-ip>")
     print("\nOptions:")
     print("  -u, --users       Number of concurrent users")
     print("  -r, --spawn-rate  Spawn rate (users per second)")

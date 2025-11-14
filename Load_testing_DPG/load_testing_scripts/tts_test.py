@@ -1,16 +1,16 @@
 """
-NMT Load Testing Script with Locust Integration for DPG
-Tests the latency of NMT service at http://13.204.164.186/
+TTS Load Testing Script with Locust Integration for DPG
+Tests the latency of TTS service at http://13.204.164.186:8000/
 
 Usage:
     # Web UI mode (default)
-    locust -f load_testing_scripts/nmt_load_test.py --host=http://13.204.164.186
+    locust -f load_testing_scripts/tts_test.py --host=http://13.204.164.186:8000
 
     # Headless mode
-    locust -f load_testing_scripts/nmt_load_test.py --host=http://13.204.164.186 --headless -u 10 -r 2 --run-time 60s
+    locust -f load_testing_scripts/tts_test.py --host=http://13.204.164.186:8000 --headless -u 10 -r 2 --run-time 60s
 
     # With custom host
-    locust -f load_testing_scripts/nmt_load_test.py --host=http://your-custom-host
+    locust -f load_testing_scripts/tts_test.py --host=http://your-custom-host
 """
 
 import os
@@ -67,12 +67,12 @@ class RetryTrackingAdapter(HTTPAdapter):
         super().__init__(max_retries=retry_strategy, *args, **kwargs)
 
 
-class NMTConfig:
-    """Configuration handler for NMT load testing"""
+class TTSConfig:
+    """Configuration handler for TTS load testing"""
 
     def __init__(self):
         """Load configuration from environment variables"""
-        print("NMTConfig.__init__() starting...")
+        print("TTSConfig.__init__() starting...")
 
         # Authentication
         self.auth_token = os.getenv("AUTH_TOKEN", "").strip('"')
@@ -80,35 +80,36 @@ class NMTConfig:
         self.username = os.getenv("USERNAME")
         self.password = os.getenv("PASSWORD")
 
-        # NMT Service Configuration
-        self.service_id = os.getenv("NMT_SERVICE_ID", "ai4bharat/indictrans--gpu-t4")
-        self.source_language = os.getenv("NMT_SOURCE_LANGUAGE", "hi")
-        self.source_script = os.getenv("NMT_SOURCE_SCRIPT", "Deva")
-        self.target_language = os.getenv("NMT_TARGET_LANGUAGE", "ta")
-        self.target_script = os.getenv("NMT_TARGET_SCRIPT", "Taml")
+        # TTS Service Configuration
+        self.service_id = os.getenv("TTS_SERVICE_ID", "ai4bharat/indictts--gpu-t4")
+        self.source_language = os.getenv("TTS_SOURCE_LANGUAGE", "hi")
+        self.source_script = os.getenv("TTS_SOURCE_SCRIPT", "Deva")
+        self.gender = os.getenv("TTS_GENDER", "male")
+        self.sampling_rate = int(os.getenv("TTS_SAMPLING_RATE", "16000"))
+        self.audio_format = os.getenv("TTS_AUDIO_FORMAT", "wav")
         self.control_config = self._parse_control_config()
 
-        # Load NMT samples
-        print("About to call _load_nmt_samples()...")
-        self.nmt_samples = self._load_nmt_samples()
-        print(f"_load_nmt_samples() returned: {len(self.nmt_samples)} samples")
+        # Load TTS samples
+        print("About to call _load_tts_samples()...")
+        self.tts_samples = self._load_tts_samples()
+        print(f"_load_tts_samples() returned: {len(self.tts_samples)} samples")
 
         # Validate configuration
         self._validate_config()
 
     def _parse_control_config(self) -> Dict[str, Any]:
         """Parse controlConfig from environment variable"""
-        control_config_str = os.getenv("NMT_CONTROL_CONFIG", '{"dataTracking":true}')
+        control_config_str = os.getenv("TTS_CONTROL_CONFIG", '{"dataTracking":true}')
         try:
             return json.loads(control_config_str)
         except json.JSONDecodeError:
-            print(f"Warning: Invalid JSON in NMT_CONTROL_CONFIG, using default")
+            print(f"Warning: Invalid JSON in TTS_CONTROL_CONFIG, using default")
             return {"dataTracking": True}
 
-    def _load_nmt_samples(self) -> List[Dict[str, str]]:
-        """Load NMT samples from JSON file"""
+    def _load_tts_samples(self) -> List[Dict[str, str]]:
+        """Load TTS samples from JSON file"""
         # Get file path - use environment variable or default
-        file_path = os.getenv("NMT_SAMPLES_FILE", "load_testing_test_samples/nmt/nmt_samples.json")
+        file_path = os.getenv("TTS_SAMPLES_FILE", "load_testing_test_samples/tts/tts_samples.json")
 
         # Make it absolute if it's relative
         if not os.path.isabs(file_path):
@@ -118,14 +119,14 @@ class NMTConfig:
             project_root = os.path.dirname(parent_dir)
             file_path = os.path.join(project_root, file_path)
 
-        print(f"\n=== LOADING NMT SAMPLES ===")
+        print(f"\n=== LOADING TTS SAMPLES ===")
         print(f"Path: {file_path}")
         print(f"Exists: {os.path.exists(file_path)}")
 
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                samples = data.get("nmt_samples", [])
+                samples = data.get("tts_samples", [])
                 print(f"Loaded: {len(samples)} samples")
                 print(f"=== DONE ===\n")
                 return samples
@@ -139,25 +140,24 @@ class NMTConfig:
         if not self.auth_token:
             raise ValueError("AUTH_TOKEN is required in .env file")
         if not self.service_id:
-            raise ValueError("NMT_SERVICE_ID is required in .env file")
+            raise ValueError("TTS_SERVICE_ID is required in .env file")
         if not self.source_language:
-            raise ValueError("NMT_SOURCE_LANGUAGE is required in .env file")
-        if not self.target_language:
-            raise ValueError("NMT_TARGET_LANGUAGE is required in .env file")
-        if not self.nmt_samples:
-            raise ValueError("No NMT samples found. Please check nmt_samples.json")
+            raise ValueError("TTS_SOURCE_LANGUAGE is required in .env file")
+        if not self.tts_samples:
+            raise ValueError("No TTS samples found. Please check tts_samples.json")
 
     def build_payload(self, source_text: str) -> Dict[str, Any]:
-        """Build the API payload for DPG endpoint"""
+        """Build the API payload for DPG TTS endpoint"""
         return {
             "controlConfig": self.control_config,
             "config": {
                 "serviceId": self.service_id,
+                "gender": self.gender,
+                "samplingRate": self.sampling_rate,
+                "audioFormat": self.audio_format,
                 "language": {
                     "sourceLanguage": self.source_language,
-                    "sourceScriptCode": self.source_script,
-                    "targetLanguage": self.target_language,
-                    "targetScriptCode": self.target_script
+                    "sourceScriptCode": self.source_script
                 }
             },
             "input": [
@@ -176,14 +176,14 @@ class NMTConfig:
             "Authorization": self.auth_token
         }
 
-    def get_random_nmt_sample(self) -> str:
-        """Get a random NMT sample from the loaded samples"""
-        sample = random.choice(self.nmt_samples)
+    def get_random_tts_sample(self) -> str:
+        """Get a random TTS sample from the loaded samples"""
+        sample = random.choice(self.tts_samples)
         return sample.get("source", "")
 
 
-class NMTUser(HttpUser):
-    """Locust User class for NMT load testing"""
+class TTSUser(HttpUser):
+    """Locust User class for TTS load testing"""
 
     # Wait time between tasks (in seconds)
     # Can be configured via environment variable
@@ -197,30 +197,28 @@ class NMTUser(HttpUser):
         try:
             # Reload .env to get fresh config
             load_dotenv(override=True)
-            self.config = NMTConfig()  # Create fresh config for each user
-
+            self.config = TTSConfig()  # Create fresh config for each user
             # Install retry tracking adapter
             adapter = RetryTrackingAdapter()
             self.client.mount("http://", adapter)
             self.client.mount("https://", adapter)
-
-            print(f"Starting NMT User - Service: {self.config.service_id}, "
-                  f"Language: {self.config.source_language} ({self.config.source_script}) -> "
-                  f"{self.config.target_language} ({self.config.target_script})")
+            print(f"Starting TTS User - Service: {self.config.service_id}, "
+                  f"Language: {self.config.source_language} ({self.config.source_script}), "
+                  f"Gender: {self.config.gender}")
         except Exception as e:
-            print(f"ERROR in NMT User on_start: {e}")
+            print(f"ERROR in TTS User on_start: {e}")
             import traceback
             traceback.print_exc()
             raise
 
     @task
-    def nmt_request(self):
+    def tts_request(self):
         """
-        Task to send NMT request
+        Task to send TTS request
         This is the main load testing task that will be executed repeatedly
         """
-        # Get random NMT sample
-        source_text = self.config.get_random_nmt_sample()
+        # Get random TTS sample
+        source_text = self.config.get_random_tts_sample()
 
         # Build payload
         payload = self.config.build_payload(source_text)
@@ -241,13 +239,13 @@ class NMTUser(HttpUser):
 
         # Send request with Locust's built-in metrics tracking
         with self.client.post(
-            "/services/inference/translation",
+            "/services/inference/tts",
             params=params,
             json=payload,
             headers=headers,
             catch_response=True,
-            name="NMT Translation Request",
-            timeout=250  # Increased timeout for translation under load
+            name="TTS Synthesis Request",
+            timeout=250  # Increased timeout for audio synthesis under load
         ) as response:
 
             if response.status_code != 200:
@@ -263,50 +261,36 @@ class NMTUser(HttpUser):
                 response.failure("Response not valid JSON")
                 return
 
-            # Validate 'output' exists and is a non-empty list
-            output = data.get("output")
-            if not isinstance(output, list) or len(output) == 0:
+            # Validate 'audio' exists and is a non-empty list
+            audio = data.get("audio")
+            if not isinstance(audio, list) or len(audio) == 0:
                 self._track_failure()
-                response.failure("Missing or empty 'output' array in response")
+                response.failure("Missing or empty 'audio' array in response")
                 return
 
-            # Validate first output element is a dict with a non-empty translated text field
-            first = output[0]
+            # Validate first audio element is a dict with non-empty 'audioContent' field
+            first = audio[0]
             if not isinstance(first, dict):
                 self._track_failure()
-                response.failure("Invalid output[0] format; expected object")
+                response.failure("Invalid audio[0] format; expected object")
                 return
 
-            # Common keys to look for in NMT responses (be permissive)
-            translated_text = (
-                first.get("target")
-                or first.get("translation")
-                or first.get("translatedText")
-                or first.get("text")
-                or first.get("output")
-            )
-
-            if not isinstance(translated_text, str) or not translated_text.strip():
+            # Get the audio content (base64 encoded audio)
+            audio_content = first.get("audioContent", "")
+            if not isinstance(audio_content, str) or not audio_content.strip():
                 self._track_failure()
-                response.failure("Empty or missing translated text in output[0]")
+                response.failure("Empty or missing 'audioContent' in audio[0]")
                 return
 
-            # Optional: basic sanity checks (length ratio, identical source->target detection)
+            # Optional: basic sanity checks for audio content
             try:
-                src = payload.get("input", [{}])[0].get("source", "")
-                if isinstance(src, str) and src.strip():
-                    # if translation equals source exactly, mark as warning/failure (adjust as needed)
-                    if str(translated_text).strip() == str(src).strip():
-                        self._track_failure()
-                        response.failure("Translated text identical to source (possible failure)")
-                        return
-                    # optional: extremely short translations may indicate an error
-                    if len(str(translated_text).split()) < 1:
-                        self._track_failure()
-                        response.failure("Translated text too short")
-                        return
+                # Check if audioContent looks like base64 (basic check)
+                if len(audio_content) < 100:  # Audio should be reasonably sized
+                    self._track_failure()
+                    response.failure("Audio content too short")
+                    return
             except Exception:
-                # don't crash  treat as non-fatal unless you want to enforce stricter checks
+                # Don't crash - treat as non-fatal unless you want to enforce stricter checks
                 pass
 
             # All checks passed -> success
@@ -334,14 +318,16 @@ def on_test_start(environment, **kwargs):
 
     # Create config instance for display
     load_dotenv(override=True)
-    test_config = NMTConfig()
+    test_config = TTSConfig()
     print("\n" + "="*70)
-    print("NMT LOAD TEST STARTED - DPG")
+    print("TTS LOAD TEST STARTED - DPG")
     print("="*70)
     print(f"Service ID: {test_config.service_id}")
     print(f"Source Language: {test_config.source_language} ({test_config.source_script})")
-    print(f"Target Language: {test_config.target_language} ({test_config.target_script})")
-    print(f"NMT Samples Loaded: {len(test_config.nmt_samples)}")
+    print(f"Gender: {test_config.gender}")
+    print(f"Sampling Rate: {test_config.sampling_rate}")
+    print(f"Audio Format: {test_config.audio_format}")
+    print(f"TTS Samples Loaded: {len(test_config.tts_samples)}")
     print("="*70 + "\n")
 
     # Start periodic throughput tracking
@@ -382,13 +368,13 @@ def on_test_start(environment, **kwargs):
 def on_test_stop(environment, **kwargs):
     """Called when the test stops"""
     global retry_count, retry_failures
-
+    global retry_count
     # Signal throughput thread to stop
     if hasattr(environment, '_throughput_stop_event'):
         environment._throughput_stop_event.set()
 
     print("\n" + "="*70)
-    print("NMT LOAD TEST COMPLETED - DPG")
+    print("TTS LOAD TEST COMPLETED - DPG")
     print("="*70)
 
     # Get statistics
@@ -400,18 +386,22 @@ def on_test_stop(environment, **kwargs):
     print(f"Automatic Retries: {retry_count}")
     print(f"  └─ Retry attempts that also failed: {retry_failures}")
     print(f"Actual Server Requests: {stats.total.num_requests + retry_count}")
-    print(f"Success Rate: {((stats.total.num_requests - stats.total.num_failures) / stats.total.num_requests * 100):.2f}%")
 
-    print(f"\nResponse Time Statistics (milliseconds):")
-    print(f"  Min:     {stats.total.min_response_time:.2f}")
-    print(f"  Max:     {stats.total.max_response_time:.2f}")
-    print(f"  Median:  {stats.total.median_response_time:.2f}")
-    print(f"  Average: {stats.total.avg_response_time:.2f}")
-    print(f"  P95:     {stats.total.get_response_time_percentile(0.95):.2f}")
-    print(f"  P99:     {stats.total.get_response_time_percentile(0.99):.2f}")
+    if stats.total.num_requests > 0:
+        print(f"Success Rate: {((stats.total.num_requests - stats.total.num_failures) / stats.total.num_requests * 100):.2f}%")
 
-    print(f"\nRequests per second: {stats.total.total_rps:.2f}")
-    print(f"Average Content Size: {stats.total.avg_content_length:.2f} bytes")
+        print(f"\nResponse Time Statistics (milliseconds):")
+        print(f"  Min:     {stats.total.min_response_time:.2f}")
+        print(f"  Max:     {stats.total.max_response_time:.2f}")
+        print(f"  Median:  {stats.total.median_response_time:.2f}")
+        print(f"  Average: {stats.total.avg_response_time:.2f}")
+        print(f"  P95:     {stats.total.get_response_time_percentile(0.95):.2f}")
+        print(f"  P99:     {stats.total.get_response_time_percentile(0.99):.2f}")
+
+        print(f"\nRequests per second: {stats.total.total_rps:.2f}")
+        print(f"Average Content Size: {stats.total.avg_content_length:.2f} bytes")
+    else:
+        print("No requests were made during the test")
 
     print("="*70 + "\n")
 
@@ -427,7 +417,7 @@ def save_results_to_json(environment):
 
     # Create config instance for saving results
     load_dotenv(override=True)
-    save_config = NMTConfig()
+    save_config = TTSConfig()
 
     # Calculate error rate
     error_rate = (stats.total.num_failures / stats.total.num_requests * 100) if stats.total.num_requests > 0 else 0
@@ -499,8 +489,9 @@ def save_results_to_json(environment):
             "service_id": save_config.service_id,
             "source_language": save_config.source_language,
             "source_script": save_config.source_script,
-            "target_language": save_config.target_language,
-            "target_script": save_config.target_script
+            "gender": save_config.gender,
+            "sampling_rate": save_config.sampling_rate,
+            "audio_format": save_config.audio_format
         },
         "statistics": {
             "total_requests": stats.total.num_requests,
@@ -564,7 +555,7 @@ def save_results_to_json(environment):
     results_dir = os.path.join(parent_dir, "load_testing_results")
     os.makedirs(results_dir, exist_ok=True)
 
-    filename = os.path.join(results_dir, "nmt_load_test_results.json")
+    filename = os.path.join(results_dir, "tts_load_test_results.json")
     with open(filename, 'w') as f:
         json.dump(output, f, indent=2)
 
@@ -574,23 +565,23 @@ def save_results_to_json(environment):
 if __name__ == "__main__":
     """
     This allows running the script directly, but Locust should be run via CLI:
-    locust -f load_testing_scripts/nmt_load_test.py --host=http://13.204.164.186
+    locust -f load_testing_scripts/tts_test.py --host=http://13.204.164.186:8000
     """
     import sys
     print("\n" + "="*70)
-    print("NMT Load Testing with Locust - DPG")
+    print("TTS Load Testing with Locust - DPG")
     print("="*70)
     print("\nTo run this test, use the Locust CLI:")
     print("\n1. Web UI mode (recommended):")
-    print("   locust -f Load_testing_DPG/load_testing_scripts/nmt_load_test.py --host=http://13.204.164.186")
+    print("   locust -f Load_testing_DPG/load_testing_scripts/tts_test.py --host=http://13.204.164.186:8000")
     print("   Then open http://localhost:8089 in your browser")
     print("\n2. Headless mode:")
-    print("   locust -f Load_testing_DPG/load_testing_scripts/nmt_load_test.py --host=http://13.204.164.186 \\")
+    print("   locust -f Load_testing_DPG/load_testing_scripts/tts_test.py --host=http://13.204.164.186:8000 \\")
     print("          --headless -u 10 -r 2 --run-time 60s")
     print("\n3. Distributed mode (master):")
-    print("   locust -f Load_testing_DPG/load_testing_scripts/nmt_load_test.py --host=http://13.204.164.186 --master")
+    print("   locust -f Load_testing_DPG/load_testing_scripts/tts_test.py --host=http://13.204.164.186:8000 --master")
     print("\n4. Distributed mode (worker):")
-    print("   locust -f Load_testing_DPG/load_testing_scripts/nmt_load_test.py --worker --master-host=<master-ip>")
+    print("   locust -f Load_testing_DPG/load_testing_scripts/tts_test.py --worker --master-host=<master-ip>")
     print("\nOptions:")
     print("  -u, --users       Number of concurrent users")
     print("  -r, --spawn-rate  Spawn rate (users per second)")
