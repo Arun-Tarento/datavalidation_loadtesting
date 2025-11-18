@@ -264,7 +264,7 @@ class ASRUser(HttpUser):
                 headers=headers,
                 catch_response=True,
                 name="ASR Transcription Request",
-                timeout=250  # Increased timeout for audio processing under load
+                timeout=120  # Increased timeout for audio processing under load
             ) as response:
 
                 if response.status_code != 200:
@@ -314,14 +314,37 @@ class ASRUser(HttpUser):
             import requests.exceptions
             error_type = type(e).__name__
 
-            # Distinguish between different exception types
+            # Distinguish between different exception types and mark as failure in Locust
             if isinstance(e, requests.exceptions.Timeout):
-                self._track_failure("REQUEST_TIMEOUT")
+                self._track_failure("CLIENT_TIMEOUT")
+                # Fire a request_failure event so Locust counts it
+                self.environment.events.request.fire(
+                    request_type="POST",
+                    name="ASR Transcription Request",
+                    response_time=None,
+                    response_length=0,
+                    exception=e,
+                )
             elif isinstance(e, requests.exceptions.ConnectionError):
-                self._track_failure("CONNECTION_ERROR")
+                self._track_failure("CLIENT_CONNECTION_ERROR")
+                self.environment.events.request.fire(
+                    request_type="POST",
+                    name="ASR Transcription Request",
+                    response_time=None,
+                    response_length=0,
+                    exception=e,
+                )
             else:
-                self._track_failure(f"EXCEPTION_{error_type}")
-            raise
+                self._track_failure(f"CLIENT_EXCEPTION_{error_type}")
+                self.environment.events.request.fire(
+                    request_type="POST",
+                    name="ASR Transcription Request",
+                    response_time=None,
+                    response_length=0,
+                    exception=e,
+                )
+            # Don't re-raise - we've already tracked it
+            # This prevents Locust from retrying and allows the test to continue
 
     def _track_failure(self, error_type: str):
         """Track failures by error type/status code"""
@@ -424,14 +447,39 @@ def on_test_stop(environment, **kwargs):
         print(f"Success Rate: {((stats.total.num_requests - stats.total.num_failures) / stats.total.num_requests * 100):.2f}%")
 
         # Print error breakdown if there are failures
-        if stats.total.num_failures > 0 and error_tracking:
+        if (stats.total.num_failures > 0 or error_tracking) and error_tracking:
+            # Categorize errors
+            client_errors = {}
+            server_errors = {}
+            for error_type, count in error_tracking.items():
+                if error_type.startswith("CLIENT_") or error_type in ["REQUEST_TIMEOUT", "CONNECTION_ERROR", "TIMEOUT_OR_CONNECTION_FAILURE"]:
+                    client_errors[error_type] = count
+                else:
+                    server_errors[error_type] = count
+
+            total_client = sum(client_errors.values())
+            total_server = sum(server_errors.values())
+
             print(f"\nError Breakdown:")
-            print(f"  {'Error Type':<30} {'Count':>8} {'% of Failures':>15} {'% of Total':>12}")
-            print(f"  {'-'*30} {'-'*8} {'-'*15} {'-'*12}")
-            for error_type, count in sorted(error_tracking.items(), key=lambda x: x[1], reverse=True):
-                pct_failures = (count / stats.total.num_failures) * 100
-                pct_total = (count / stats.total.num_requests) * 100
-                print(f"  {error_type:<30} {count:>8} {pct_failures:>14.2f}% {pct_total:>11.2f}%")
+            print(f"  Total Errors: {total_client + total_server}")
+            print(f"  ├─ Client-Side Errors: {total_client} ({(total_client/stats.total.num_requests*100):.2f}% of total requests)")
+            print(f"  └─ Server-Side Errors: {total_server} ({(total_server/stats.total.num_requests*100):.2f}% of total requests)")
+
+            if client_errors:
+                print(f"\n  Client-Side Errors (timeouts, connection issues):")
+                print(f"    {'Error Type':<28} {'Count':>8} {'% of Total':>12}")
+                print(f"    {'-'*28} {'-'*8} {'-'*12}")
+                for error_type, count in sorted(client_errors.items(), key=lambda x: x[1], reverse=True):
+                    pct_total = (count / stats.total.num_requests) * 100
+                    print(f"    {error_type:<28} {count:>8} {pct_total:>11.2f}%")
+
+            if server_errors:
+                print(f"\n  Server-Side Errors (HTTP errors, validation failures):")
+                print(f"    {'Error Type':<28} {'Count':>8} {'% of Total':>12}")
+                print(f"    {'-'*28} {'-'*8} {'-'*12}")
+                for error_type, count in sorted(server_errors.items(), key=lambda x: x[1], reverse=True):
+                    pct_total = (count / stats.total.num_requests) * 100
+                    print(f"    {error_type:<28} {count:>8} {pct_total:>11.2f}%")
 
         print(f"\nResponse Time Statistics (milliseconds):")
         print(f"  Min:     {stats.total.min_response_time:.2f}")
@@ -473,16 +521,33 @@ def save_results_to_json(environment):
     retry_rate = (retry_count / stats.total.num_requests * 100) if stats.total.num_requests > 0 else 0
     retry_failure_rate = (retry_failures / retry_count * 100) if retry_count > 0 else 0
 
-    # Calculate error breakdown with percentages
+    # Calculate error breakdown with percentages - distinguish client vs server errors
     error_breakdown = {}
+    server_errors = {}
+    client_errors = {}
     total_failures = stats.total.num_failures
-    if total_failures > 0:
+
+    if total_failures > 0 or error_tracking:
         for error_type, count in error_tracking.items():
-            error_breakdown[error_type] = {
+            error_detail = {
                 "count": count,
-                "percentage_of_failures": round((count / total_failures) * 100, 2),
-                "percentage_of_total_requests": round((count / stats.total.num_requests) * 100, 2)
+                "percentage_of_failures": round((count / total_failures) * 100, 2) if total_failures > 0 else 0,
+                "percentage_of_total_requests": round((count / stats.total.num_requests) * 100, 2) if stats.total.num_requests > 0 else 0
             }
+            error_breakdown[error_type] = error_detail
+
+            # Categorize as client or server error
+            if error_type.startswith("CLIENT_") or error_type in ["REQUEST_TIMEOUT", "CONNECTION_ERROR", "TIMEOUT_OR_CONNECTION_FAILURE"]:
+                client_errors[error_type] = error_detail
+            elif error_type.startswith("HTTP_"):
+                server_errors[error_type] = error_detail
+            else:
+                # JSON/validation errors could be either, but let's categorize as server for now
+                server_errors[error_type] = error_detail
+
+    # Calculate totals
+    total_client_errors = sum(e["count"] for e in client_errors.values())
+    total_server_errors = sum(e["count"] for e in server_errors.values())
 
     # Calculate throughput statistics
     throughput_stats = {}
@@ -543,6 +608,22 @@ def save_results_to_json(environment):
             "success_rate": ((stats.total.num_requests - stats.total.num_failures) / stats.total.num_requests * 100) if stats.total.num_requests > 0 else 0,
             "error_rate_percentage": round(error_rate, 2),
             "error_breakdown": error_breakdown,
+            "error_categorization": {
+                "client_side_errors": {
+                    "total_count": total_client_errors,
+                    "percentage_of_total_requests": round((total_client_errors / stats.total.num_requests * 100), 2) if stats.total.num_requests > 0 else 0,
+                    "details": client_errors
+                },
+                "server_side_errors": {
+                    "total_count": total_server_errors,
+                    "percentage_of_total_requests": round((total_server_errors / stats.total.num_requests * 100), 2) if stats.total.num_requests > 0 else 0,
+                    "details": server_errors
+                },
+                "explanation": {
+                    "client_side": "Timeouts, connection errors - requests that never reached the server or didn't get a response",
+                    "server_side": "HTTP errors (4xx, 5xx), JSON parse errors - server responded but with an error"
+                }
+            },
             "retry_statistics": {
                 "automatic_retries": retry_count,
                 "retry_failures": retry_failures,

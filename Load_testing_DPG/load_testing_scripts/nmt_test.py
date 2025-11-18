@@ -33,6 +33,7 @@ first_failure_time: Optional[float] = None
 throughput_samples = []  # List of (timestamp, rps) tuples
 payload_sizes = []  # List of payload sizes in bytes
 input_char_counts = []  # List of input text character counts
+error_tracking = {}  # Dictionary to track errors by type/status code
 retry_count = 0  # Total number of automatic retries
 retry_failures = 0  # Number of retry attempts that also failed
 
@@ -240,56 +241,62 @@ class NMTUser(HttpUser):
         params = {"serviceId": self.config.service_id}
 
         # Send request with Locust's built-in metrics tracking
-        with self.client.post(
+        try:
+            with self.client.post(
             "/services/inference/translation",
             params=params,
             json=payload,
             headers=headers,
             catch_response=True,
             name="NMT Translation Request",
-            timeout=250  # Increased timeout for translation under load
+            timeout=60  # Increased timeout for translation under load
         ) as response:
 
-            if response.status_code != 200:
-                self._track_failure()
-                response.failure(f"HTTP {response.status_code}: {response.text[:200]}")
-                return
+                if response.status_code != 200:
+                    # HTTP 0 typically means timeout or connection issue
+                    if response.status_code == 0:
+                        error_key = "TIMEOUT_OR_CONNECTION_FAILURE"
+                    else:
+                        error_key = f"HTTP_{response.status_code}"
+                    self._track_failure(error_key)
+                    response.failure(f"HTTP {response.status_code}: {response.text[:200] if response.text else 'No response text'}")
+                    return
 
-            # JSON parse
-            try:
-                data = response.json()
-            except ValueError:
-                self._track_failure()
-                response.failure("Response not valid JSON")
-                return
+                # JSON parse
+                try:
+                    data = response.json()
+                except ValueError as e:
+                    self._track_failure("JSON_PARSE_ERROR")
+                    response.failure("Response not valid JSON")
+                    return
 
-            # Validate 'output' exists and is a non-empty list
-            output = data.get("output")
-            if not isinstance(output, list) or len(output) == 0:
-                self._track_failure()
-                response.failure("Missing or empty 'output' array in response")
-                return
+                # Validate 'output' exists and is a non-empty list
+                output = data.get("output")
+                if not isinstance(output, list) or len(output) == 0:
+                    self._track_failure("MISSING_OUTPUT_ARRAY")
+                    response.failure("Missing or empty 'output' array in response")
+                    return
 
-            # Validate first output element is a dict with a non-empty translated text field
-            first = output[0]
-            if not isinstance(first, dict):
-                self._track_failure()
-                response.failure("Invalid output[0] format; expected object")
-                return
+                # Validate first output element is a dict with a non-empty translated text field
+                first = output[0]
+                if not isinstance(first, dict):
+                    self._track_failure("INVALID_OUTPUT_FORMAT")
+                    response.failure("Invalid output[0] format; expected object")
+                    return
 
-            # Common keys to look for in NMT responses (be permissive)
-            translated_text = (
-                first.get("target")
-                or first.get("translation")
-                or first.get("translatedText")
-                or first.get("text")
-                or first.get("output")
-            )
+                # Common keys to look for in NMT responses (be permissive)
+                translated_text = (
+                    first.get("target")
+                    or first.get("translation")
+                    or first.get("translatedText")
+                    or first.get("text")
+                    or first.get("output")
+                )
 
-            if not isinstance(translated_text, str) or not translated_text.strip():
-                self._track_failure()
-                response.failure("Empty or missing translated text in output[0]")
-                return
+                if not isinstance(translated_text, str) or not translated_text.strip():
+                    self._track_failure("EMPTY_TRANSLATION")
+                    response.failure("Empty or missing translated text in output[0]")
+                    return
 
             # Optional: basic sanity checks (length ratio, identical source->target detection)
             try:
@@ -297,38 +304,83 @@ class NMTUser(HttpUser):
                 if isinstance(src, str) and src.strip():
                     # if translation equals source exactly, mark as warning/failure (adjust as needed)
                     if str(translated_text).strip() == str(src).strip():
-                        self._track_failure()
+                        self._track_failure("IDENTICAL_SOURCE_TARGET")
                         response.failure("Translated text identical to source (possible failure)")
                         return
                     # optional: extremely short translations may indicate an error
                     if len(str(translated_text).split()) < 1:
-                        self._track_failure()
+                        self._track_failure("TRANSLATION_TOO_SHORT")
                         response.failure("Translated text too short")
                         return
             except Exception:
                 # don't crash  treat as non-fatal unless you want to enforce stricter checks
                 pass
 
-            # All checks passed -> success
-            response.success()
+                # All checks passed -> success
+                response.success()
 
-    def _track_failure(self):
-        """Track the first failure timestamp"""
-        global first_failure_time
+        except Exception as e:
+            # Catch connection errors, timeouts, etc.
+            import requests.exceptions
+            error_type = type(e).__name__
+
+            # Distinguish between different exception types and mark as failure in Locust
+            if isinstance(e, requests.exceptions.Timeout):
+                self._track_failure("CLIENT_TIMEOUT")
+                # Fire a request_failure event so Locust counts it
+                self.environment.events.request.fire(
+                    request_type="POST",
+                    name="NMT Translation Request",
+                    response_time=None,
+                    response_length=0,
+                    exception=e,
+                )
+            elif isinstance(e, requests.exceptions.ConnectionError):
+                self._track_failure("CLIENT_CONNECTION_ERROR")
+                self.environment.events.request.fire(
+                    request_type="POST",
+                    name="NMT Translation Request",
+                    response_time=None,
+                    response_length=0,
+                    exception=e,
+                )
+            else:
+                self._track_failure(f"CLIENT_EXCEPTION_{error_type}")
+                self.environment.events.request.fire(
+                    request_type="POST",
+                    name="NMT Translation Request",
+                    response_time=None,
+                    response_length=0,
+                    exception=e,
+                )
+            # Don't re-raise - we've already tracked it
+            # This prevents Locust from retrying and allows the test to continue
+
+    def _track_failure(self, error_type: str):
+        """Track failures by error type/status code"""
+        global first_failure_time, error_tracking
+
+        # Track first failure timestamp
         if first_failure_time is None:
             first_failure_time = time.time()
+
+        # Track error by type
+        if error_type not in error_tracking:
+            error_tracking[error_type] = 0
+        error_tracking[error_type] += 1
 
 
 # Locust event handlers for custom reporting
 @events.test_start.add_listener
 def on_test_start(environment, **kwargs):
     """Called when the test starts"""
-    global first_failure_time, throughput_samples, payload_sizes, input_char_counts, retry_count
+    global first_failure_time, throughput_samples, payload_sizes, input_char_counts, error_tracking, retry_count, retry_failures
     # Reset global tracking variables
     first_failure_time = None
     throughput_samples = []
     payload_sizes = []
     input_char_counts = []
+    error_tracking = {}
     retry_count = 0
     retry_failures = 0
 
@@ -381,7 +433,7 @@ def on_test_start(environment, **kwargs):
 @events.test_stop.add_listener
 def on_test_stop(environment, **kwargs):
     """Called when the test stops"""
-    global retry_count, retry_failures
+    global error_tracking, retry_count, retry_failures
 
     # Signal throughput thread to stop
     if hasattr(environment, '_throughput_stop_event'):
@@ -400,7 +452,44 @@ def on_test_stop(environment, **kwargs):
     print(f"Automatic Retries: {retry_count}")
     print(f"  └─ Retry attempts that also failed: {retry_failures}")
     print(f"Actual Server Requests: {stats.total.num_requests + retry_count}")
-    print(f"Success Rate: {((stats.total.num_requests - stats.total.num_failures) / stats.total.num_requests * 100):.2f}%")
+
+    if stats.total.num_requests > 0:
+        print(f"Success Rate: {((stats.total.num_requests - stats.total.num_failures) / stats.total.num_requests * 100):.2f}%")
+
+        # Print error breakdown if there are failures
+        if (stats.total.num_failures > 0 or error_tracking) and error_tracking:
+            # Categorize errors
+            client_errors = {}
+            server_errors = {}
+            for error_type, count in error_tracking.items():
+                if error_type.startswith("CLIENT_") or error_type in ["REQUEST_TIMEOUT", "CONNECTION_ERROR", "TIMEOUT_OR_CONNECTION_FAILURE"]:
+                    client_errors[error_type] = count
+                else:
+                    server_errors[error_type] = count
+
+            total_client = sum(client_errors.values())
+            total_server = sum(server_errors.values())
+
+            print(f"\nError Breakdown:")
+            print(f"  Total Errors: {total_client + total_server}")
+            print(f"  ├─ Client-Side Errors: {total_client} ({(total_client/stats.total.num_requests*100):.2f}% of total requests)")
+            print(f"  └─ Server-Side Errors: {total_server} ({(total_server/stats.total.num_requests*100):.2f}% of total requests)")
+
+            if client_errors:
+                print(f"\n  Client-Side Errors (timeouts, connection issues):")
+                print(f"    {'Error Type':<28} {'Count':>8} {'% of Total':>12}")
+                print(f"    {'-'*28} {'-'*8} {'-'*12}")
+                for error_type, count in sorted(client_errors.items(), key=lambda x: x[1], reverse=True):
+                    pct_total = (count / stats.total.num_requests) * 100
+                    print(f"    {error_type:<28} {count:>8} {pct_total:>11.2f}%")
+
+            if server_errors:
+                print(f"\n  Server-Side Errors (HTTP errors, validation failures):")
+                print(f"    {'Error Type':<28} {'Count':>8} {'% of Total':>12}")
+                print(f"    {'-'*28} {'-'*8} {'-'*12}")
+                for error_type, count in sorted(server_errors.items(), key=lambda x: x[1], reverse=True):
+                    pct_total = (count / stats.total.num_requests) * 100
+                    print(f"    {error_type:<28} {count:>8} {pct_total:>11.2f}%")
 
     print(f"\nResponse Time Statistics (milliseconds):")
     print(f"  Min:     {stats.total.min_response_time:.2f}")
@@ -448,6 +537,34 @@ def save_results_to_json(environment):
     actual_server_requests = stats.total.num_requests + retry_count
     retry_rate = (retry_count / stats.total.num_requests * 100) if stats.total.num_requests > 0 else 0
     retry_failure_rate = (retry_failures / retry_count * 100) if retry_count > 0 else 0
+
+    # Calculate error breakdown with percentages - distinguish client vs server errors
+    error_breakdown = {}
+    server_errors = {}
+    client_errors = {}
+    total_failures = stats.total.num_failures
+
+    if total_failures > 0 or error_tracking:
+        for error_type, count in error_tracking.items():
+            error_detail = {
+                "count": count,
+                "percentage_of_failures": round((count / total_failures) * 100, 2) if total_failures > 0 else 0,
+                "percentage_of_total_requests": round((count / stats.total.num_requests) * 100, 2) if stats.total.num_requests > 0 else 0
+            }
+            error_breakdown[error_type] = error_detail
+
+            # Categorize as client or server error
+            if error_type.startswith("CLIENT_") or error_type in ["REQUEST_TIMEOUT", "CONNECTION_ERROR", "TIMEOUT_OR_CONNECTION_FAILURE"]:
+                client_errors[error_type] = error_detail
+            elif error_type.startswith("HTTP_"):
+                server_errors[error_type] = error_detail
+            else:
+                # JSON/validation errors could be either, but let's categorize as server for now
+                server_errors[error_type] = error_detail
+
+    # Calculate totals
+    total_client_errors = sum(e["count"] for e in client_errors.values())
+    total_server_errors = sum(e["count"] for e in server_errors.values())
 
     # Calculate throughput statistics
     throughput_stats = {}
@@ -507,6 +624,23 @@ def save_results_to_json(environment):
             "failed_requests": stats.total.num_failures,
             "success_rate": ((stats.total.num_requests - stats.total.num_failures) / stats.total.num_requests * 100) if stats.total.num_requests > 0 else 0,
             "error_rate_percentage": round(error_rate, 2),
+            "error_breakdown": error_breakdown,
+            "error_categorization": {
+                "client_side_errors": {
+                    "total_count": total_client_errors,
+                    "percentage_of_total_requests": round((total_client_errors / stats.total.num_requests * 100), 2) if stats.total.num_requests > 0 else 0,
+                    "details": client_errors
+                },
+                "server_side_errors": {
+                    "total_count": total_server_errors,
+                    "percentage_of_total_requests": round((total_server_errors / stats.total.num_requests * 100), 2) if stats.total.num_requests > 0 else 0,
+                    "details": server_errors
+                },
+                "explanation": {
+                    "client_side": "Timeouts, connection errors - requests that never reached the server or didn't get a response",
+                    "server_side": "HTTP errors (4xx, 5xx), JSON parse errors - server responded but with an error"
+                }
+            },
             "retry_statistics": {
                 "automatic_retries": retry_count,
                 "retry_failures": retry_failures,
