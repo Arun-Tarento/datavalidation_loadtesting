@@ -1,6 +1,6 @@
 """
 Test single ASR request to debug issues
-Can be run from any directory: python3 Load_testing_DPG/asr_single_request_test.py
+Can be run from any directory: python3 Load_testing_DPG/single_request_to_validate/asr_single_request_test.py
 """
 import os
 import json
@@ -9,7 +9,7 @@ import requests
 
 # Load environment - check script directory first, then project root
 script_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(script_dir)
+project_root = os.path.dirname(os.path.dirname(script_dir))  # Go up 2 levels (single_request_to_validate -> Load_testing_DPG -> project_root)
 
 # Try to find .env file in script directory first, then project root
 env_path = os.path.join(script_dir, '.env')

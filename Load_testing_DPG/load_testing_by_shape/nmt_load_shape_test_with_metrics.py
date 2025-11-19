@@ -42,28 +42,28 @@ class StagesShapeWithMetrics(LoadTestShape):
         {"duration": 120, "users": 10, "spawn_rate": 1, "name": "Stage 1: Warm-up (10 users)"},
 
         # Stage 2: Baseline - Establish stable performance
-        {"duration": 240, "users": 10, "spawn_rate": 1, "name": "Stage 2: Baseline (10 users)"},
+        {"duration": 240, "users": 10, "spawn_rate": 1, "name": "Stage 2: Baseline (10 users)"}
 
-        # Stage 3: Light stress - Gradual increase
-        {"duration": 420, "users": 20, "spawn_rate": 1, "name": "Stage 3: Light Stress (20 users)"},
+        # # Stage 3: Light stress - Gradual increase
+        # {"duration": 420, "users": 20, "spawn_rate": 1, "name": "Stage 3: Light Stress (20 users)"},
 
-        # Stage 4: Medium load - Hold and observe
-        {"duration": 540, "users": 20, "spawn_rate": 1, "name": "Stage 4: Medium Load Hold (20 users)"},
+        # # Stage 4: Medium load - Hold and observe
+        # {"duration": 540, "users": 20, "spawn_rate": 1, "name": "Stage 4: Medium Load Hold (20 users)"},
 
-        # Stage 5: Heavy stress - Push harder
-        {"duration": 660, "users": 40, "spawn_rate": 2, "name": "Stage 5: Heavy Stress (40 users)"},
+        # # Stage 5: Heavy stress - Push harder
+        # {"duration": 660, "users": 40, "spawn_rate": 2, "name": "Stage 5: Heavy Stress (40 users)"},
 
-        # Stage 6: Peak load - Hold at high load
-        {"duration": 780, "users": 40, "spawn_rate": 2, "name": "Stage 6: Peak Load Hold (40 users)"},
+        # # Stage 6: Peak load - Hold at high load
+        # {"duration": 780, "users": 40, "spawn_rate": 2, "name": "Stage 6: Peak Load Hold (40 users)"},
 
-        # Stage 7: Breaking point - Push to failure
-        {"duration": 900, "users": 60, "spawn_rate": 2, "name": "Stage 7: Breaking Point (60 users)"},
+        # # Stage 7: Breaking point - Push to failure
+        # {"duration": 900, "users": 60, "spawn_rate": 2, "name": "Stage 7: Breaking Point (60 users)"},
 
-        # Stage 8: Observation - Watch it fail
-        {"duration": 1020, "users": 60, "spawn_rate": 2, "name": "Stage 8: Failure Observation (60 users)"},
+        # # Stage 8: Observation - Watch it fail
+        # {"duration": 1020, "users": 60, "spawn_rate": 2, "name": "Stage 8: Failure Observation (60 users)"},
 
-        # Stage 9: Cool down - Scale back down
-        {"duration": 1080, "users": 10, "spawn_rate": 3, "name": "Stage 9: Cool Down (10 users)"},
+        # # Stage 9: Cool down - Scale back down
+        # {"duration": 1080, "users": 10, "spawn_rate": 3, "name": "Stage 9: Cool Down (10 users)"},
     ]
 
     def tick(self):
