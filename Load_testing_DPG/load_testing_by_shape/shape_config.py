@@ -953,3 +953,369 @@ class TLDUser(HttpUser):
                 response.success()
             else:
                 response.failure(f"HTTP {response.status_code}")
+
+
+# ============================================================================
+# SPEAKER DIARIZATION Configuration and User
+# ============================================================================
+
+class SpeakerDiarizationConfig:
+    """Configuration handler for Speaker Diarization load testing"""
+
+    def __init__(self):
+        """Load configuration from environment variables"""
+        # Authentication
+        self.auth_token = os.getenv("AUTH_TOKEN", "").strip('"')
+        self.x_auth_source = os.getenv("X_AUTH_SOURCE", "AUTH_TOKEN")
+
+        # Speaker Diarization Service Configuration
+        self.service_id = os.getenv("SPEAKER_DIARIZATION_SERVICE_ID", "ai4bharat/speaker-diarization")
+        self.control_config = self._parse_control_config()
+
+        # Load Speaker Diarization samples
+        self.speaker_diarization_samples = self._load_speaker_diarization_samples()
+
+        # Validate configuration
+        self._validate_config()
+
+    def _parse_control_config(self) -> Dict[str, Any]:
+        """Parse controlConfig from environment variable"""
+        control_config_str = os.getenv("SPEAKER_DIARIZATION_CONTROL_CONFIG", '{"dataTracking":true}')
+        try:
+            return json.loads(control_config_str)
+        except json.JSONDecodeError:
+            return {"dataTracking": True}
+
+    def _load_speaker_diarization_samples(self) -> List[str]:
+        """Load Speaker Diarization samples from JSON file"""
+        file_path = os.getenv("SPEAKER_DIARIZATION_SAMPLES_FILE", "load_testing_test_samples/speakerdiarization/speakerdiarization.json.example")
+
+        if not os.path.isabs(file_path):
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            parent_dir = os.path.dirname(script_dir)  # Load_testing_DPG
+            auto_dir = os.path.dirname(parent_dir)    # Auto
+            file_path = os.path.join(auto_dir, file_path)
+
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                samples = data.get("audio_samples", [])
+                return samples
+        except Exception as e:
+            print(f"ERROR loading Speaker Diarization samples: {e}")
+            return []
+
+    def _validate_config(self):
+        """Validate required configurations"""
+        if not self.auth_token:
+            raise ValueError("AUTH_TOKEN is required in .env file")
+        if not self.service_id:
+            raise ValueError("SPEAKER_DIARIZATION_SERVICE_ID is required in .env file")
+        if not self.speaker_diarization_samples:
+            raise ValueError("No Speaker Diarization samples found")
+
+    def build_payload(self, audio_content: str) -> Dict[str, Any]:
+        """Build the API payload for DPG Speaker Diarization endpoint"""
+        return {
+            "controlConfig": self.control_config,
+            "config": {
+                "serviceId": self.service_id
+            },
+            "audio": [
+                {
+                    "audioContent": audio_content
+                }
+            ]
+        }
+
+    def get_headers(self) -> Dict[str, str]:
+        """Get API headers"""
+        return {
+            "accept": "application/json",
+            "x-auth-source": self.x_auth_source,
+            "Content-Type": "application/json",
+            "Authorization": self.auth_token
+        }
+
+    def get_random_speaker_diarization_sample(self) -> str:
+        """Get a random Speaker Diarization sample from the loaded samples"""
+        return random.choice(self.speaker_diarization_samples)
+
+
+class SpeakerDiarizationUser(HttpUser):
+    """Locust User class for Speaker Diarization load testing"""
+
+    wait_time = between(
+        float(os.getenv("MIN_WAIT_TIME", "1")),
+        float(os.getenv("MAX_WAIT_TIME", "3"))
+    )
+
+    def on_start(self):
+        """Called when a simulated user starts"""
+        load_dotenv(override=True)
+        self.config = SpeakerDiarizationConfig()
+
+    @task
+    def speaker_diarization_request(self):
+        """Task to send Speaker Diarization request"""
+        audio_content = self.config.get_random_speaker_diarization_sample()
+        payload = self.config.build_payload(audio_content)
+        headers = self.config.get_headers()
+        params = {"serviceId": self.config.service_id}
+
+        with self.client.post(
+            "/services/inference/speaker-diarization",
+            params=params,
+            json=payload,
+            headers=headers,
+            timeout=250,
+            catch_response=True
+        ) as response:
+            if response.status_code == 200:
+                response.success()
+            else:
+                response.failure(f"HTTP {response.status_code}")
+
+
+# ============================================================================
+# LANGUAGE DIARIZATION Configuration and User
+# ============================================================================
+
+class LanguageDiarizationConfig:
+    """Configuration handler for Language Diarization load testing"""
+
+    def __init__(self):
+        """Load configuration from environment variables"""
+        # Authentication
+        self.auth_token = os.getenv("AUTH_TOKEN", "").strip('"')
+        self.x_auth_source = os.getenv("X_AUTH_SOURCE", "AUTH_TOKEN")
+
+        # Language Diarization Service Configuration
+        self.service_id = os.getenv("LANGUAGE_DIARIZATION_SERVICE_ID", "ai4bharat/language-diarization")
+        self.control_config = self._parse_control_config()
+
+        # Load Language Diarization samples
+        self.language_diarization_samples = self._load_language_diarization_samples()
+
+        # Validate configuration
+        self._validate_config()
+
+    def _parse_control_config(self) -> Dict[str, Any]:
+        """Parse controlConfig from environment variable"""
+        control_config_str = os.getenv("LANGUAGE_DIARIZATION_CONTROL_CONFIG", '{"dataTracking":true}')
+        try:
+            return json.loads(control_config_str)
+        except json.JSONDecodeError:
+            return {"dataTracking": True}
+
+    def _load_language_diarization_samples(self) -> List[str]:
+        """Load Language Diarization samples from JSON file"""
+        file_path = os.getenv("LANGUAGE_DIARIZATION_SAMPLES_FILE", "load_testing_test_samples/languagediarization/languagediarization.json.example")
+
+        if not os.path.isabs(file_path):
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            parent_dir = os.path.dirname(script_dir)  # Load_testing_DPG
+            auto_dir = os.path.dirname(parent_dir)    # Auto
+            file_path = os.path.join(auto_dir, file_path)
+
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                samples = data.get("audio_samples", [])
+                return samples
+        except Exception as e:
+            print(f"ERROR loading Language Diarization samples: {e}")
+            return []
+
+    def _validate_config(self):
+        """Validate required configurations"""
+        if not self.auth_token:
+            raise ValueError("AUTH_TOKEN is required in .env file")
+        if not self.service_id:
+            raise ValueError("LANGUAGE_DIARIZATION_SERVICE_ID is required in .env file")
+        if not self.language_diarization_samples:
+            raise ValueError("No Language Diarization samples found")
+
+    def build_payload(self, audio_content: str) -> Dict[str, Any]:
+        """Build the API payload for DPG Language Diarization endpoint"""
+        return {
+            "controlConfig": self.control_config,
+            "config": {
+                "serviceId": self.service_id
+            },
+            "audio": [
+                {
+                    "audioContent": audio_content
+                }
+            ]
+        }
+
+    def get_headers(self) -> Dict[str, str]:
+        """Get API headers"""
+        return {
+            "accept": "application/json",
+            "x-auth-source": self.x_auth_source,
+            "Content-Type": "application/json",
+            "Authorization": self.auth_token
+        }
+
+    def get_random_language_diarization_sample(self) -> str:
+        """Get a random Language Diarization sample from the loaded samples"""
+        return random.choice(self.language_diarization_samples)
+
+
+class LanguageDiarizationUser(HttpUser):
+    """Locust User class for Language Diarization load testing"""
+
+    wait_time = between(
+        float(os.getenv("MIN_WAIT_TIME", "1")),
+        float(os.getenv("MAX_WAIT_TIME", "3"))
+    )
+
+    def on_start(self):
+        """Called when a simulated user starts"""
+        load_dotenv(override=True)
+        self.config = LanguageDiarizationConfig()
+
+    @task
+    def language_diarization_request(self):
+        """Task to send Language Diarization request"""
+        audio_content = self.config.get_random_language_diarization_sample()
+        payload = self.config.build_payload(audio_content)
+        headers = self.config.get_headers()
+        params = {"serviceId": self.config.service_id}
+
+        with self.client.post(
+            "/services/inference/language-diarization",
+            params=params,
+            json=payload,
+            headers=headers,
+            timeout=250,
+            catch_response=True
+        ) as response:
+            if response.status_code == 200:
+                response.success()
+            else:
+                response.failure(f"HTTP {response.status_code}")
+
+
+# ============================================================================
+# AUDIO LANGUAGE DETECTION (ALD) Configuration and User
+# ============================================================================
+
+class AudioLanguageDetectionConfig:
+    """Configuration handler for Audio Language Detection (ALD) load testing"""
+
+    def __init__(self):
+        """Load configuration from environment variables"""
+        # Authentication
+        self.auth_token = os.getenv("AUTH_TOKEN", "").strip('"')
+        self.x_auth_source = os.getenv("X_AUTH_SOURCE", "AUTH_TOKEN")
+
+        # Audio Language Detection Service Configuration
+        self.service_id = os.getenv("ALD_SERVICE_ID", "ai4bharat/audio-lang-detection")
+        self.control_config = self._parse_control_config()
+
+        # Load Audio Language Detection samples
+        self.ald_samples = self._load_ald_samples()
+
+        # Validate configuration
+        self._validate_config()
+
+    def _parse_control_config(self) -> Dict[str, Any]:
+        """Parse controlConfig from environment variable"""
+        control_config_str = os.getenv("ALD_CONTROL_CONFIG", '{"dataTracking":true}')
+        try:
+            return json.loads(control_config_str)
+        except json.JSONDecodeError:
+            return {"dataTracking": True}
+
+    def _load_ald_samples(self) -> List[str]:
+        """Load Audio Language Detection samples from JSON file"""
+        file_path = os.getenv("ALD_SAMPLES_FILE", "load_testing_test_samples/ald/ald.json.example")
+
+        if not os.path.isabs(file_path):
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            parent_dir = os.path.dirname(script_dir)  # Load_testing_DPG
+            auto_dir = os.path.dirname(parent_dir)    # Auto
+            file_path = os.path.join(auto_dir, file_path)
+
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                samples = data.get("audio_samples", [])
+                return samples
+        except Exception as e:
+            print(f"ERROR loading Audio Language Detection samples: {e}")
+            return []
+
+    def _validate_config(self):
+        """Validate required configurations"""
+        if not self.auth_token:
+            raise ValueError("AUTH_TOKEN is required in .env file")
+        if not self.service_id:
+            raise ValueError("ALD_SERVICE_ID is required in .env file")
+        if not self.ald_samples:
+            raise ValueError("No Audio Language Detection samples found")
+
+    def build_payload(self, audio_content: str) -> Dict[str, Any]:
+        """Build the API payload for DPG Audio Language Detection endpoint"""
+        return {
+            "controlConfig": self.control_config,
+            "config": {
+                "serviceId": self.service_id
+            },
+            "audio": [
+                {
+                    "audioContent": audio_content
+                }
+            ]
+        }
+
+    def get_headers(self) -> Dict[str, str]:
+        """Get API headers"""
+        return {
+            "accept": "application/json",
+            "x-auth-source": self.x_auth_source,
+            "Content-Type": "application/json",
+            "Authorization": self.auth_token
+        }
+
+    def get_random_ald_sample(self) -> str:
+        """Get a random Audio Language Detection sample from the loaded samples"""
+        return random.choice(self.ald_samples)
+
+
+class AudioLanguageDetectionUser(HttpUser):
+    """Locust User class for Audio Language Detection (ALD) load testing"""
+
+    wait_time = between(
+        float(os.getenv("MIN_WAIT_TIME", "1")),
+        float(os.getenv("MAX_WAIT_TIME", "3"))
+    )
+
+    def on_start(self):
+        """Called when a simulated user starts"""
+        load_dotenv(override=True)
+        self.config = AudioLanguageDetectionConfig()
+
+    @task
+    def ald_request(self):
+        """Task to send Audio Language Detection request"""
+        audio_content = self.config.get_random_ald_sample()
+        payload = self.config.build_payload(audio_content)
+        headers = self.config.get_headers()
+        params = {"serviceId": self.config.service_id}
+
+        with self.client.post(
+            "/services/inference/audio-lang-detection",
+            params=params,
+            json=payload,
+            headers=headers,
+            timeout=250,
+            catch_response=True
+        ) as response:
+            if response.status_code == 200:
+                response.success()
+            else:
+                response.failure(f"HTTP {response.status_code}")

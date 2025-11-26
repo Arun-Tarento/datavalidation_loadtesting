@@ -45,6 +45,12 @@ def check_config(config_name, config_class):
             samples_attr = 'transliteration_samples'
         elif hasattr(config, 'tld_samples'):
             samples_attr = 'tld_samples'
+        elif hasattr(config, 'speaker_diarization_samples'):
+            samples_attr = 'speaker_diarization_samples'
+        elif hasattr(config, 'language_diarization_samples'):
+            samples_attr = 'language_diarization_samples'
+        elif hasattr(config, 'ald_samples'):
+            samples_attr = 'ald_samples'
 
         if samples_attr:
             samples = getattr(config, samples_attr)
@@ -89,7 +95,9 @@ def main():
     try:
         from shape_config import (
             ASRConfig, NMTConfig, TTSConfig, NERConfig,
-            OCRConfig, TransliterationConfig, TLDConfig
+            OCRConfig, TransliterationConfig, TLDConfig,
+            SpeakerDiarizationConfig, LanguageDiarizationConfig,
+            AudioLanguageDetectionConfig
         )
         print("✅ All config classes imported successfully")
     except Exception as e:
@@ -105,6 +113,9 @@ def main():
         ("OCRConfig", OCRConfig),
         ("TransliterationConfig", TransliterationConfig),
         ("TLDConfig", TLDConfig),
+        ("SpeakerDiarizationConfig", SpeakerDiarizationConfig),
+        ("LanguageDiarizationConfig", LanguageDiarizationConfig),
+        ("AudioLanguageDetectionConfig", AudioLanguageDetectionConfig),
     ]
 
     for config_name, config_class in configs:

@@ -39,7 +39,7 @@ class StagesShapeWithMetrics(LoadTestShape):
 
     stages = [
         # Stage 1: Warm-up - Gentle start
-        {"duration": 120, "users": 10, "spawn_rate": 1, "name": "Stage 1: Warm-up (10 users)"},
+        {"duration": 120, "users": 5, "spawn_rate": 1, "name": "Stage 1: Warm-up (5 users)"},
 
         # Stage 2: Baseline - Establish stable performance
         {"duration": 240, "users": 10, "spawn_rate": 1, "name": "Stage 2: Baseline (10 users)"},
@@ -89,6 +89,9 @@ class StagesShapeWithMetrics(LoadTestShape):
                         stats = self.runner.stats.total
                         stage_requests_snapshot = stats.num_requests
                         stage_failures_snapshot = stats.num_failures
+                        print(f"[DEBUG] New snapshot taken: {stage_requests_snapshot} requests")
+                    else:
+                        print(f"[WARNING] Could not take snapshot - runner not available")
 
                     print(f"\n{'='*70}")
                     print(f"🔄 {stage['name']}")
@@ -100,6 +103,15 @@ class StagesShapeWithMetrics(LoadTestShape):
         # Test complete - save final stage
         if current_stage_name is not None:
             capture_stage_metrics(self, current_stage_name, stage_start_time)
+
+        # Auto-quit after all stages complete
+        print(f"\n{'='*70}")
+        print("✅ All stages completed - stopping test automatically...")
+        print(f"{'='*70}\n")
+
+        # Stop the test gracefully
+        if hasattr(self, 'runner') and self.runner:
+            self.runner.quit()
 
         return None
 
@@ -118,6 +130,13 @@ def capture_stage_metrics(shape_instance, stage_name: str, start_time: float):
     # Calculate stage-specific metrics
     stage_requests = stats.num_requests - stage_requests_snapshot
     stage_failures = stats.num_failures - stage_failures_snapshot
+
+    # Debug logging to track snapshot values
+    print(f"[DEBUG] Stage: {stage_name}")
+    print(f"[DEBUG] Current total requests: {stats.num_requests}")
+    print(f"[DEBUG] Snapshot at stage start: {stage_requests_snapshot}")
+    print(f"[DEBUG] Stage requests calculated: {stage_requests}")
+
     stage_success_rate = ((stage_requests - stage_failures) / stage_requests * 100) if stage_requests > 0 else 0
     stage_error_rate = (stage_failures / stage_requests * 100) if stage_requests > 0 else 0
 
@@ -175,6 +194,16 @@ def on_test_stop(environment, **kwargs):
 
     stats = environment.stats.total
 
+    # Validate stage metrics against overall total
+    total_stage_requests = sum(stage.get("requests", {}).get("total", 0) for stage in stage_metrics.values())
+    print(f"\n🔍 VALIDATION:")
+    print(f"Total requests from Locust stats: {stats.num_requests}")
+    print(f"Total requests from stage metrics: {total_stage_requests}")
+    if total_stage_requests != stats.num_requests:
+        discrepancy = abs(total_stage_requests - stats.num_requests)
+        print(f"⚠️  WARNING: Discrepancy detected: {discrepancy} requests difference")
+        print(f"⚠️  Stage metrics may be inaccurate due to snapshot timing issues")
+
     # Overall test summary
     print(f"\n🔍 OVERALL TEST SUMMARY:")
     print(f"Total Duration: {environment.runner.state}")
@@ -193,6 +222,14 @@ def on_test_stop(environment, **kwargs):
 
     # Build comprehensive JSON output
     output = build_enhanced_json_output(environment, stage_metrics)
+
+    # Add validation metadata to the output
+    output["validation"] = {
+        "locust_total_requests": stats.num_requests,
+        "stage_total_requests": total_stage_requests,
+        "discrepancy": total_stage_requests - stats.num_requests,
+        "note": "Use 'locust_total_requests' as the source of truth. Stage metrics may have snapshot timing issues."
+    }
 
     # Save to file
     save_enhanced_results(output)
@@ -458,6 +495,15 @@ class ConservativeShapeWithMetrics(LoadTestShape):
         if current_stage_name is not None:
             capture_stage_metrics(self, current_stage_name, stage_start_time)
 
+        # Auto-quit after all stages complete
+        print(f"\n{'='*70}")
+        print("✅ All stages completed - stopping test automatically...")
+        print(f"{'='*70}\n")
+
+        # Stop the test gracefully
+        if hasattr(self, 'runner') and self.runner:
+            self.runner.quit()
+
         return None
 
 
@@ -517,6 +563,15 @@ class AggressiveShapeWithMetrics(LoadTestShape):
         # Test complete - save final stage
         if current_stage_name is not None:
             capture_stage_metrics(self, current_stage_name, stage_start_time)
+
+        # Auto-quit after all stages complete
+        print(f"\n{'='*70}")
+        print("✅ All stages completed - stopping test automatically...")
+        print(f"{'='*70}\n")
+
+        # Stop the test gracefully
+        if hasattr(self, 'runner') and self.runner:
+            self.runner.quit()
 
         return None
 
