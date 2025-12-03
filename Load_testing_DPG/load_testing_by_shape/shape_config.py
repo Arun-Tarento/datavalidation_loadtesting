@@ -672,7 +672,7 @@ class OCRUser(HttpUser):
         headers = self.config.get_headers()
 
         with self.client.post(
-            "/services/inference/pipeline/ocr",
+            "/services/inference/ocr",
             json=payload,
             headers=headers,
             timeout=250,
@@ -883,28 +883,15 @@ class TLDConfig:
     def build_payload(self, source_text: str) -> Dict[str, Any]:
         """Build the API payload for DPG TLD endpoint"""
         return {
-            "pipelineTasks": [
-                {
-                    "taskType": "txt-lang-detection",
-                    "config": {
-                        "serviceId": self.service_id
-                    }
-                }
-            ],
-            "inputData": {
-                "input": [
-                    {
-                        "source": source_text
-                    }
-                ],
-                "audio": [
-                    {}
-                ],
-                "image": [
-                    {}
-                ]
+            "controlConfig": self.control_config,
+            "config": {
+                "serviceId": self.service_id
             },
-            "controlConfig": self.control_config
+            "input": [
+                {
+                    "source": source_text
+                }
+            ]
         }
 
     def get_headers(self) -> Dict[str, str]:
@@ -943,7 +930,7 @@ class TLDUser(HttpUser):
         headers = self.config.get_headers()
 
         with self.client.post(
-            "/services/inference/pipeline",
+            "/services/inference/txt-lang-detection",
             json=payload,
             headers=headers,
             timeout=250,

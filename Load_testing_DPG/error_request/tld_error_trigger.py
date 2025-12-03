@@ -50,7 +50,7 @@ results = {
 print("="*80)
 print("TLD (LANGUAGE DETECTION) ERROR TRIGGER SCRIPT")
 print("="*80)
-print(f"Target: {base_url}/services/inference/tld")
+print(f"Target: {base_url}/services/inference/txt-lang-detection")
 print(f"Total requests: 40 (10x500 + 20x400 + 5x300 + 5x200)")
 print("="*80)
 print()
@@ -72,7 +72,7 @@ for i in range(10):
 
     try:
         response = requests.post(
-            f"{base_url}/services/inference/tld",
+            f"{base_url}/services/inference/txt-lang-detection",
             params={"serviceId": service_id},
             json=payload,
             headers=headers,
@@ -118,7 +118,7 @@ for i in range(20):
 
     try:
         response = requests.post(
-            f"{base_url}/services/inference/tld",
+            f"{base_url}/services/inference/txt-lang-detection",
             params={"serviceId": f"invalid-tld-service-{i}"},
             json=payload,
             headers=headers,
@@ -164,7 +164,7 @@ for i in range(5):
 
     try:
         response = requests.post(
-            f"{base_url}/services/inference/tld/",
+            f"{base_url}/services/inference/txt-lang-detection/",
             params={"serviceId": service_id},
             json=payload,
             headers=headers,
@@ -211,7 +211,7 @@ for i in range(5):
 
     try:
         response = requests.post(
-            f"{base_url}/services/inference/tld",
+            f"{base_url}/services/inference/txt-lang-detection",
             params={"serviceId": service_id},
             json=payload,
             headers=headers,
