@@ -133,6 +133,10 @@ class ASRConfig:
 class NMTConfig:
     """Configuration handler for NMT load testing"""
 
+    # Class-level counter for round-robin selection (shared across all instances)
+    _sample_index = 0
+    _lock = None
+
     def __init__(self):
         """Load configuration from environment variables"""
         # Authentication
@@ -147,11 +151,24 @@ class NMTConfig:
         self.target_script = os.getenv("NMT_TARGET_SCRIPT", "Taml")
         self.control_config = self._parse_control_config()
 
+        # Sample selection mode: 'random' or 'roundrobin'
+        self.sample_selection_mode = os.getenv("NMT_SAMPLE_SELECTION", "roundrobin").lower()
+
         # Load NMT samples
         self.nmt_samples = self._load_nmt_samples()
 
+        # Initialize lock for thread-safe round-robin
+        if NMTConfig._lock is None:
+            import threading
+            NMTConfig._lock = threading.Lock()
+
         # Validate configuration
         self._validate_config()
+
+        # Print sample selection mode
+        print(f"[NMT CONFIG] Sample selection mode: {self.sample_selection_mode.upper()}")
+        if self.sample_selection_mode == "roundrobin":
+            print(f"[NMT CONFIG] Round-robin will cycle through all {len(self.nmt_samples)} samples in order")
 
     def _parse_control_config(self) -> Dict[str, Any]:
         """Parse controlConfig from environment variable"""
@@ -174,13 +191,36 @@ class NMTConfig:
             auto_dir = os.path.dirname(parent_dir)    # Auto
             file_path = os.path.join(auto_dir, file_path)
 
+        print(f"\n{'='*70}")
+        print(f"[NMT CONFIG] Loading samples from: {file_path}")
+
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 samples = data.get("nmt_samples", [])
+
+                # Get statistics if available
+                stats = data.get("statistics", {})
+                char_stats = stats.get("character_length", {})
+
+                print(f"[NMT CONFIG] ✓ Successfully loaded {len(samples)} samples")
+                if char_stats:
+                    print(f"[NMT CONFIG] Character length stats from file:")
+                    print(f"[NMT CONFIG]   - Min: {char_stats.get('min', 'N/A')}")
+                    print(f"[NMT CONFIG]   - Max: {char_stats.get('max', 'N/A')}")
+                    print(f"[NMT CONFIG]   - Mean: {char_stats.get('mean', 'N/A')}")
+                    print(f"[NMT CONFIG]   - Median: {char_stats.get('median', 'N/A')}")
+
+                # Show first few sample lengths for verification
+                if samples:
+                    sample_lengths = [len(s.get("source", "")) for s in samples[:5]]
+                    print(f"[NMT CONFIG] First 5 sample lengths: {sample_lengths}")
+
+                print(f"{'='*70}\n")
                 return samples
         except Exception as e:
-            print(f"ERROR loading NMT samples: {e}")
+            print(f"[NMT CONFIG] ✗ ERROR loading NMT samples: {e}")
+            print(f"{'='*70}\n")
             return []
 
     def _validate_config(self):
@@ -220,9 +260,34 @@ class NMTConfig:
         }
 
     def get_random_nmt_sample(self) -> str:
-        """Get a random NMT sample from the loaded samples"""
-        sample = random.choice(self.nmt_samples)
-        return sample.get("source", "")
+        """Get an NMT sample (random or round-robin based on config)"""
+        if self.sample_selection_mode == "roundrobin":
+            return self._get_roundrobin_sample()
+        else:
+            # Default to random selection
+            sample = random.choice(self.nmt_samples)
+            return sample.get("source", "")
+
+    def _get_roundrobin_sample(self) -> str:
+        """Get the next sample in round-robin order (thread-safe)"""
+        with NMTConfig._lock:
+            # Get current index
+            index = NMTConfig._sample_index
+            actual_index = index % len(self.nmt_samples)
+
+            # Get sample (works with 1 or more samples)
+            sample = self.nmt_samples[actual_index]
+            source_text = sample.get("source", "")
+
+            # Debug logging - only for first 10 samples and when it loops back
+            if index < 10 or (index > 0 and actual_index == 0):
+                print(f"[ROUND-ROBIN] Request #{index + 1} -> Sample index {actual_index} (length: {len(source_text)} chars)")
+                if actual_index == 0 and index > 0:
+                    print(f"[ROUND-ROBIN] ✓ Completed full cycle of {len(self.nmt_samples)} samples, starting over")
+
+            # Increment for next call
+            NMTConfig._sample_index += 1
+            return source_text
 
 
 class ASRUser(HttpUser):
@@ -280,6 +345,12 @@ class NMTUser(HttpUser):
         payload = self.config.build_payload(source_text)
         headers = self.config.get_headers()
         params = {"serviceId": self.config.service_id}
+
+        # Store character count in environment for tracking
+        char_count = len(source_text)
+        if not hasattr(self.environment, 'character_counts'):
+            self.environment.character_counts = []
+        self.environment.character_counts.append(char_count)
 
         with self.client.post(
             "/services/inference/translation",

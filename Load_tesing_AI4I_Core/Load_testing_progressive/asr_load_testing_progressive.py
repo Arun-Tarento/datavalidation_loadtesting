@@ -42,13 +42,13 @@ class ProgressiveLoadShape(LoadTestShape):
         {"duration": 120, "users": 5, "spawn_rate": 1, "name": "Stage 1: Warm-up (5 users)"},
 
         # Stage 2: Baseline - Establish stable performance
-        {"duration": 240, "users": 10, "spawn_rate": 1, "name": "Stage 2: Baseline (10 users)"}
+        {"duration": 240, "users": 10, "spawn_rate": 1, "name": "Stage 2: Baseline (10 users)"},
 
-        # # Stage 3: Light stress - Gradual increase
-        # {"duration": 360, "users": 15, "spawn_rate": 1, "name": "Stage 3: Light Stress (15 users)"},
+        # Stage 3: Light stress - Gradual increase
+        {"duration": 360, "users": 15, "spawn_rate": 1, "name": "Stage 3: Light Stress (15 users)"},
 
-        # # Stage 4: Medium load - Hold and observe
-        # {"duration": 480, "users": 20, "spawn_rate": 1, "name": "Stage 4: Medium Load (20 users)"},
+        # Stage 4: Medium load - Hold and observe
+        {"duration": 480, "users": 20, "spawn_rate": 1, "name": "Stage 4: Medium Load (20 users)"}
 
         # # Stage 5: Heavy stress - Push harder
         # {"duration": 600, "users": 30, "spawn_rate": 2, "name": "Stage 5: Heavy Stress (30 users)"},
@@ -413,8 +413,7 @@ def save_enhanced_results(output: Dict[str, Any]):
     # Determine save path - go to Load_testing_progressive_results folder
     script_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(script_dir)  # Load_tesing_AI4I_Core
-    root_dir = os.path.dirname(parent_dir)    # datavalidation_loadtesting
-    results_dir = os.path.join(root_dir, "Load_testing_progressive_results")
+    results_dir = os.path.join(parent_dir, "Load_testing_progressive_results")
     os.makedirs(results_dir, exist_ok=True)
 
     # Generate filename with timestamp
@@ -594,5 +593,5 @@ if __name__ == "__main__":
     print("\nTo run this test:")
     print("  locust -f Load_tesing_AI4I_Core/Load_testing_progressive/asr_load_testing_progressive.py")
     print("\nResults will be saved to:")
-    print("  Load_testing_progressive_results/asr_progressive_results_TIMESTAMP.json")
+    print("  Load_tesing_AI4I_Core/Load_testing_progressive_results/asr_progressive_results_TIMESTAMP.json")
     print("="*70 + "\n")

@@ -20,6 +20,7 @@ import os
 import sys
 from datetime import datetime
 from typing import Dict, List, Any
+import statistics
 
 # Import from local shape_config module
 from shape_config import NMTUser, NMTConfig
@@ -140,6 +141,19 @@ def capture_stage_metrics(shape_instance, stage_name: str, start_time: float):
     stage_success_rate = ((stage_requests - stage_failures) / stage_requests * 100) if stage_requests > 0 else 0
     stage_error_rate = (stage_failures / stage_requests * 100) if stage_requests > 0 else 0
 
+    # Get character counts from environment
+    character_counts = []
+    if hasattr(shape_instance.runner, 'environment') and hasattr(shape_instance.runner.environment, 'character_counts'):
+        character_counts = shape_instance.runner.environment.character_counts
+        print(f"[DEBUG] Character counts captured: {len(character_counts)} samples")
+    else:
+        print(f"[DEBUG] No character counts found in environment")
+
+    # Calculate character count statistics
+    avg_chars = round(statistics.mean(character_counts), 2) if character_counts else 0
+    median_chars = round(statistics.median(character_counts), 2) if character_counts else 0
+    print(f"[DEBUG] Character stats - Avg: {avg_chars}, Median: {median_chars}")
+
     # Get current response time stats (these are cumulative, but give us an idea)
     metrics = {
         "duration_seconds": round(duration, 2),
@@ -163,7 +177,9 @@ def capture_stage_metrics(shape_instance, stage_name: str, start_time: float):
         "throughput": {
             "requests_per_second": round(stage_requests / duration, 2) if duration > 0 else 0,
             "average_content_size_bytes": round(stats.avg_content_length, 2),
-            "median_content_size_bytes": round(stats.median_content_length, 2) if hasattr(stats, 'median_content_length') else round(stats.avg_content_length, 2)
+            "median_content_size_bytes": round(stats.median_content_length, 2) if hasattr(stats, 'median_content_length') else round(stats.avg_content_length, 2),
+            "average_content_size_characters": avg_chars,
+            "median_content_size_characters": median_chars
         }
     }
 
@@ -281,6 +297,19 @@ def build_enhanced_json_output(environment, stage_metrics: Dict) -> Dict[str, An
     load_dotenv(override=True)
     config = NMTConfig()
 
+    # Get character counts from environment
+    character_counts = []
+    if hasattr(environment, 'character_counts'):
+        character_counts = environment.character_counts
+        print(f"[DEBUG] Total character counts for overall stats: {len(character_counts)} samples")
+    else:
+        print(f"[DEBUG] No character counts found in environment for overall stats")
+
+    # Calculate overall character count statistics
+    overall_avg_chars = round(statistics.mean(character_counts), 2) if character_counts else 0
+    overall_median_chars = round(statistics.median(character_counts), 2) if character_counts else 0
+    print(f"[DEBUG] Overall character stats - Avg: {overall_avg_chars}, Median: {overall_median_chars}")
+
     # Overall statistics
     overall_stats = {
         "test_info": {
@@ -313,7 +342,9 @@ def build_enhanced_json_output(environment, stage_metrics: Dict) -> Dict[str, An
             "overall_throughput": {
                 "total_rps": round(stats.total_rps, 2),
                 "average_content_size_bytes": round(stats.avg_content_length, 2),
-                "median_content_size_bytes": round(stats.median_content_length, 2) if hasattr(stats, 'median_content_length') else round(stats.avg_content_length, 2)
+                "median_content_size_bytes": round(stats.median_content_length, 2) if hasattr(stats, 'median_content_length') else round(stats.avg_content_length, 2),
+                "average_content_size_characters": overall_avg_chars,
+                "median_content_size_characters": overall_median_chars
             }
         },
         "stage_by_stage_metrics": stage_metrics,
