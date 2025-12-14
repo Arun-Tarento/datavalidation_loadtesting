@@ -45,10 +45,10 @@ class ProgressiveLoadShape(LoadTestShape):
         {"duration": 240, "users": 10, "spawn_rate": 1, "name": "Stage 2: Baseline (10 users)"},
 
         # Stage 3: Light stress - Gradual increase
-        {"duration": 360, "users": 15, "spawn_rate": 1, "name": "Stage 3: Light Stress (15 users)"},
+        {"duration": 360, "users": 15, "spawn_rate": 1, "name": "Stage 3: Light Stress (15 users)"}
 
-        # Stage 4: Medium load - Hold and observe
-        {"duration": 480, "users": 20, "spawn_rate": 1, "name": "Stage 4: Medium Load (20 users)"}
+        # # Stage 4: Medium load - Hold and observe
+        # {"duration": 480, "users": 20, "spawn_rate": 1, "name": "Stage 4: Medium Load (20 users)"},
 
         # # Stage 5: Heavy stress - Push harder
         # {"duration": 600, "users": 30, "spawn_rate": 2, "name": "Stage 5: Heavy Stress (30 users)"},

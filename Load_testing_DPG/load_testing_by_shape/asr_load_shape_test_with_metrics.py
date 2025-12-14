@@ -39,16 +39,16 @@ class StagesShapeWithMetrics(LoadTestShape):
 
     stages = [
         # Stage 1: Warm-up - Gentle start
-        {"duration": 120, "users": 10, "spawn_rate": 1, "name": "Stage 1: Warm-up (10 users)"},
+        {"duration": 120, "users": 5, "spawn_rate": 1, "name": "Stage 1: Warm-up (5users)"},
 
         # Stage 2: Baseline - Establish stable performance
-        {"duration": 240, "users": 10, "spawn_rate": 1, "name": "Stage 2: Baseline (10 users)"}
+        {"duration": 240, "users": 10, "spawn_rate": 1, "name": "Stage 2: Baseline (10 users)"},
 
-        # # Stage 3: Light stress - Gradual increase
-        # {"duration": 420, "users": 20, "spawn_rate": 1, "name": "Stage 3: Light Stress (20 users)"},
+        # Stage 3: Light stress - Gradual increase
+        {"duration": 360, "users": 15, "spawn_rate": 1, "name": "Stage 3: Light Stress (15 users)"}
 
         # # Stage 4: Medium load - Hold and observe
-        # {"duration": 540, "users": 20, "spawn_rate": 1, "name": "Stage 4: Medium Load Hold (20 users)"},
+        # {"duration": 480, "users": 20, "spawn_rate": 1, "name": "Stage 4: Medium Load Hold (20 users)"},
 
         # # Stage 5: Heavy stress - Push harder
         # {"duration": 660, "users": 40, "spawn_rate": 2, "name": "Stage 5: Heavy Stress (40 users)"},

@@ -1,10 +1,10 @@
 """
-TTS Load Shaping Test with Enhanced Metrics - Find Server Capacity
+NMT Progressive Load Testing with Enhanced Metrics - AI4I Core API
 
 This script gradually increases load and captures detailed per-stage metrics.
 
 Usage:
-    locust -f load_testing_scripts/tts_load_shape_test_enhanced.py --host=http://13.204.164.186:8000
+    locust -f Load_tesing_AI4I_Core/Load_testing_progressive/nmt_load_testing_progressive.py
 
 Output:
     - Real-time stage transitions in console
@@ -21,8 +21,8 @@ import sys
 from datetime import datetime
 from typing import Dict, List, Any
 
-# Import from local shape_config module
-from shape_config import TTSUser, TTSConfig
+# Import from local config_progressive module
+from config_progressive import NMTUser, NMTConfig
 
 # Global tracking for per-stage metrics
 stage_metrics: Dict[str, Dict] = {}
@@ -32,9 +32,9 @@ stage_requests_snapshot = 0
 stage_failures_snapshot = 0
 
 
-class StagesShapeWithMetrics(LoadTestShape):
+class ProgressiveLoadShape(LoadTestShape):
     """
-    Load shape with per-stage metrics tracking
+    Progressive load shape with per-stage metrics tracking for AI4I Core API
     """
 
     stages = [
@@ -48,22 +48,16 @@ class StagesShapeWithMetrics(LoadTestShape):
         {"duration": 360, "users": 15, "spawn_rate": 1, "name": "Stage 3: Light Stress (15 users)"}
 
         # # Stage 4: Medium load - Hold and observe
-        # {"duration": 540, "users": 20, "spawn_rate": 1, "name": "Stage 4: Medium Load Hold (20 users)"},
+        # {"duration": 480, "users": 20, "spawn_rate": 1, "name": "Stage 4: Medium Load (20 users)"},
 
         # # Stage 5: Heavy stress - Push harder
-        # {"duration": 660, "users": 40, "spawn_rate": 2, "name": "Stage 5: Heavy Stress (40 users)"},
+        # {"duration": 600, "users": 30, "spawn_rate": 2, "name": "Stage 5: Heavy Stress (30 users)"},
 
         # # Stage 6: Peak load - Hold at high load
-        # {"duration": 780, "users": 40, "spawn_rate": 2, "name": "Stage 6: Peak Load Hold (40 users)"},
+        # {"duration": 720, "users": 40, "spawn_rate": 2, "name": "Stage 6: Peak Load (40 users)"},
 
-        # # Stage 7: Breaking point - Push to failure
-        # {"duration": 900, "users": 60, "spawn_rate": 2, "name": "Stage 7: Breaking Point (60 users)"},
-
-        # # Stage 8: Observation - Watch it fail
-        # {"duration": 1020, "users": 60, "spawn_rate": 2, "name": "Stage 8: Failure Observation (60 users)"},
-
-        # # Stage 9: Cool down - Scale back down
-        # {"duration": 1080, "users": 10, "spawn_rate": 3, "name": "Stage 9: Cool Down (10 users)"},
+        # # Stage 7: Cool down - Scale back down
+        # {"duration": 780, "users": 10, "spawn_rate": 3, "name": "Stage 7: Cool Down (10 users)"},
     ]
 
     def tick(self):
@@ -140,7 +134,7 @@ def capture_stage_metrics(shape_instance, stage_name: str, start_time: float):
     stage_success_rate = ((stage_requests - stage_failures) / stage_requests * 100) if stage_requests > 0 else 0
     stage_error_rate = (stage_failures / stage_requests * 100) if stage_requests > 0 else 0
 
-    # Get current response time stats (these are cumulative, but give us an idea)
+    # Get current response time stats
     metrics = {
         "duration_seconds": round(duration, 2),
         "start_time": datetime.fromtimestamp(start_time).isoformat(),
@@ -189,7 +183,7 @@ def on_test_stop(environment, **kwargs):
         return
 
     print("\n" + "="*70)
-    print("📊 TTS LOAD SHAPE TEST COMPLETED")
+    print("📊 NMT PROGRESSIVE LOAD TEST COMPLETED - AI4I Core API")
     print("="*70)
 
     stats = environment.stats.total
@@ -209,8 +203,9 @@ def on_test_stop(environment, **kwargs):
     print(f"Total Duration: {environment.runner.state}")
     print(f"Total Requests: {stats.num_requests}")
     print(f"Total Failures: {stats.num_failures}")
-    print(f"Overall Success Rate: {((stats.num_requests - stats.num_failures) / stats.num_requests * 100):.2f}%")
-    print(f"Overall Error Rate: {(stats.num_failures / stats.num_requests * 100):.2f}%")
+    if stats.num_requests > 0:
+        print(f"Overall Success Rate: {((stats.num_requests - stats.num_failures) / stats.num_requests * 100):.2f}%")
+        print(f"Overall Error Rate: {(stats.num_failures / stats.num_requests * 100):.2f}%")
 
     # Analyze breaking point
     print(f"\n🎯 CAPACITY ANALYSIS:")
@@ -279,22 +274,23 @@ def build_enhanced_json_output(environment, stage_metrics: Dict) -> Dict[str, An
     # Get test configuration
     from dotenv import load_dotenv
     load_dotenv(override=True)
-    config = TTSConfig()
+    config = NMTConfig()
 
     # Overall statistics
     overall_stats = {
         "test_info": {
-            "test_type": "load_shaping",
-            "service": "TTS (Text-to-Speech)",
+            "test_type": "progressive_load_testing",
+            "service": "NMT (Neural Machine Translation) - AI4I Core API",
+            "api_endpoint": "/api/v1/nmt/inference",
             "test_date": datetime.now().isoformat(),
             "total_duration_seconds": time.time() - environment.stats.start_time,
         },
         "test_config": {
+            "base_url": config.base_url,
             "service_id": config.service_id,
             "source_language": config.source_language,
-            "source_script": config.source_script,
-            "audio_format": config.audio_format,
-            "sampling_rate": config.sampling_rate
+            "target_language": config.target_language,
+            "control_config": config.control_config
         },
         "overall_statistics": {
             "total_requests": stats.num_requests,
@@ -410,15 +406,15 @@ def generate_recommendations(stage_metrics: Dict) -> Dict[str, Any]:
 
 def save_enhanced_results(output: Dict[str, Any]):
     """Save enhanced results to JSON file"""
-    # Determine save path
+    # Determine save path - go to Load_testing_progressive_results folder
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.dirname(script_dir)
-    results_dir = os.path.join(parent_dir, "load_testing_shape_results")
+    parent_dir = os.path.dirname(script_dir)  # Load_tesing_AI4I_Core
+    results_dir = os.path.join(parent_dir, "Load_testing_progressive_results")
     os.makedirs(results_dir, exist_ok=True)
 
     # Generate filename with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = os.path.join(results_dir, f"tts_load_shape_results_{timestamp}.json")
+    filename = os.path.join(results_dir, f"nmt_progressive_results_{timestamp}.json")
 
     # Save JSON
     with open(filename, 'w') as f:
@@ -439,12 +435,12 @@ def save_enhanced_results(output: Dict[str, Any]):
         print(f"   Recommended Production Capacity: {recommendations['production_capacity']}")
 
 
-class ConservativeShapeWithMetrics(LoadTestShape):
+class ConservativeProgressiveLoad(LoadTestShape):
     """
-    Very conservative load shape with metrics - for severely struggling servers.
+    Very conservative progressive load - for severely struggling servers.
     Increases load very slowly to find exact breaking point.
 
-    Total duration: 15 minutes
+    Total duration: ~15 minutes
     """
 
     stages = [
@@ -454,14 +450,14 @@ class ConservativeShapeWithMetrics(LoadTestShape):
         {"duration": 240, "users": 5, "spawn_rate": 1, "name": "Stage 2: 5 users"},
         {"duration": 360, "users": 5, "spawn_rate": 1, "name": "Stage 2 Hold"},
 
-        {"duration": 420, "users": 10, "spawn_rate": 1, "name": "Stage 3: 10 users"},
-        {"duration": 540, "users": 10, "spawn_rate": 1, "name": "Stage 3 Hold"},
+        {"duration": 420, "users": 8, "spawn_rate": 1, "name": "Stage 3: 8 users"},
+        {"duration": 540, "users": 8, "spawn_rate": 1, "name": "Stage 3 Hold"},
 
-        {"duration": 600, "users": 15, "spawn_rate": 1, "name": "Stage 4: 15 users"},
-        {"duration": 720, "users": 15, "spawn_rate": 1, "name": "Stage 4 Hold"},
+        {"duration": 600, "users": 12, "spawn_rate": 1, "name": "Stage 4: 12 users"},
+        {"duration": 720, "users": 12, "spawn_rate": 1, "name": "Stage 4 Hold"},
 
-        {"duration": 780, "users": 20, "spawn_rate": 1, "name": "Stage 5: 20 users"},
-        {"duration": 900, "users": 20, "spawn_rate": 1, "name": "Stage 5 Hold"},
+        {"duration": 780, "users": 15, "spawn_rate": 1, "name": "Stage 5: 15 users"},
+        {"duration": 900, "users": 15, "spawn_rate": 1, "name": "Stage 5 Hold"},
     ]
 
     def tick(self):
@@ -471,23 +467,18 @@ class ConservativeShapeWithMetrics(LoadTestShape):
 
         for stage in self.stages:
             if run_time < stage["duration"]:
-                # Check if entering new stage
                 if current_stage_name != stage["name"]:
-                    # Save metrics for previous stage
                     if current_stage_name is not None:
                         capture_stage_metrics(self, current_stage_name, stage_start_time)
 
-                    # Start new stage
                     current_stage_name = stage["name"]
                     stage_start_time = time.time()
 
-                    # Snapshot current metrics
                     if hasattr(self, 'runner') and self.runner:
                         stats = self.runner.stats.total
                         stage_requests_snapshot = stats.num_requests
                         stage_failures_snapshot = stats.num_failures
 
-                    # Print stage announcement
                     print(f"\n{'='*70}")
                     print(f"STAGE: {stage['name']}")
                     print(f"Time: {run_time:.0f}s | Target Users: {stage['users']} | Spawn Rate: {stage['spawn_rate']}/s")
@@ -495,42 +486,39 @@ class ConservativeShapeWithMetrics(LoadTestShape):
 
                 return (stage["users"], stage["spawn_rate"])
 
-        # Test complete - save final stage
         if current_stage_name is not None:
             capture_stage_metrics(self, current_stage_name, stage_start_time)
 
-        # Auto-quit after all stages complete
         print(f"\n{'='*70}")
         print("✅ All stages completed - stopping test automatically...")
         print(f"{'='*70}\n")
 
-        # Stop the test gracefully
         if hasattr(self, 'runner') and self.runner:
             self.runner.quit()
 
         return None
 
 
-class AggressiveShapeWithMetrics(LoadTestShape):
+class AggressiveProgressiveLoad(LoadTestShape):
     """
-    Aggressive load shape with metrics - for finding limits quickly.
+    Aggressive progressive load - for finding limits quickly.
     Rapidly increases load to find breaking point fast.
 
-    Total duration: 10 minutes
+    Total duration: ~10 minutes
     """
 
     stages = [
-        {"duration": 60, "users": 10, "spawn_rate": 2, "name": "Quick Start"},
+        {"duration": 60, "users": 10, "spawn_rate": 2, "name": "Quick Start (10 users)"},
         {"duration": 150, "users": 10, "spawn_rate": 2, "name": "Quick Start Hold"},
 
-        {"duration": 210, "users": 25, "spawn_rate": 3, "name": "Rapid Ramp"},
+        {"duration": 210, "users": 25, "spawn_rate": 3, "name": "Rapid Ramp (25 users)"},
         {"duration": 300, "users": 25, "spawn_rate": 3, "name": "Rapid Hold"},
 
-        {"duration": 360, "users": 50, "spawn_rate": 5, "name": "Heavy Push"},
+        {"duration": 360, "users": 50, "spawn_rate": 5, "name": "Heavy Push (50 users)"},
         {"duration": 450, "users": 50, "spawn_rate": 5, "name": "Heavy Hold"},
 
-        {"duration": 510, "users": 100, "spawn_rate": 10, "name": "Breaking Point"},
-        {"duration": 600, "users": 100, "spawn_rate": 10, "name": "Observation"},
+        {"duration": 510, "users": 75, "spawn_rate": 5, "name": "Breaking Point (75 users)"},
+        {"duration": 600, "users": 75, "spawn_rate": 5, "name": "Observation"},
     ]
 
     def tick(self):
@@ -540,23 +528,18 @@ class AggressiveShapeWithMetrics(LoadTestShape):
 
         for stage in self.stages:
             if run_time < stage["duration"]:
-                # Check if entering new stage
                 if current_stage_name != stage["name"]:
-                    # Save metrics for previous stage
                     if current_stage_name is not None:
                         capture_stage_metrics(self, current_stage_name, stage_start_time)
 
-                    # Start new stage
                     current_stage_name = stage["name"]
                     stage_start_time = time.time()
 
-                    # Snapshot current metrics
                     if hasattr(self, 'runner') and self.runner:
                         stats = self.runner.stats.total
                         stage_requests_snapshot = stats.num_requests
                         stage_failures_snapshot = stats.num_failures
 
-                    # Print stage announcement
                     print(f"\n{'='*70}")
                     print(f"STAGE: {stage['name']}")
                     print(f"Time: {run_time:.0f}s | Target Users: {stage['users']}")
@@ -564,16 +547,13 @@ class AggressiveShapeWithMetrics(LoadTestShape):
 
                 return (stage["users"], stage["spawn_rate"])
 
-        # Test complete - save final stage
         if current_stage_name is not None:
             capture_stage_metrics(self, current_stage_name, stage_start_time)
 
-        # Auto-quit after all stages complete
         print(f"\n{'='*70}")
         print("✅ All stages completed - stopping test automatically...")
         print(f"{'='*70}\n")
 
-        # Stop the test gracefully
         if hasattr(self, 'runner') and self.runner:
             self.runner.quit()
 
@@ -581,22 +561,22 @@ class AggressiveShapeWithMetrics(LoadTestShape):
 
 
 # Default load shape - comment/uncomment to switch between shapes
-# Use StagesShapeWithMetrics for normal capacity testing (recommended, ~18 min)
-class CustomLoadShape(StagesShapeWithMetrics):
+# Use ProgressiveLoadShape for normal capacity testing (recommended, ~13 min)
+class CustomLoadShape(ProgressiveLoadShape):
     pass
 
-# Or use ConservativeShapeWithMetrics if server is very weak (~15 min)
-# class CustomLoadShape(ConservativeShapeWithMetrics):
+# Or use ConservativeProgressiveLoad if server is very weak (~15 min)
+# class CustomLoadShape(ConservativeProgressiveLoad):
 #     pass
 
-# Or use AggressiveShapeWithMetrics to find limits quickly (~10 min)
-# class CustomLoadShape(AggressiveShapeWithMetrics):
+# Or use AggressiveProgressiveLoad to find limits quickly (~10 min)
+# class CustomLoadShape(AggressiveProgressiveLoad):
 #     pass
 
 
 if __name__ == "__main__":
     print("\n" + "="*70)
-    print("TTS Load Shape Testing with Enhanced Metrics")
+    print("NMT Progressive Load Testing with Enhanced Metrics - AI4I Core API")
     print("="*70)
     print("\nThis script captures detailed per-stage metrics:")
     print("  ✓ Error rate per stage")
@@ -607,7 +587,7 @@ if __name__ == "__main__":
     print("  ✓ Breaking point detection")
     print("  ✓ Production recommendations")
     print("\nTo run this test:")
-    print("  locust -f Load_testing_DPG/load_testing_by_shape/tts_load_shape_test_with_metrics.py --host=http://13.204.164.186:8000")
+    print("  locust -f Load_tesing_AI4I_Core/Load_testing_progressive/nmt_load_testing_progressive.py")
     print("\nResults will be saved to:")
-    print("  Load_testing_DPG/load_testing_shape_results/tts_load_shape_results_TIMESTAMP.json")
+    print("  Load_tesing_AI4I_Core/Load_testing_progressive_results/nmt_progressive_results_TIMESTAMP.json")
     print("="*70 + "\n")
