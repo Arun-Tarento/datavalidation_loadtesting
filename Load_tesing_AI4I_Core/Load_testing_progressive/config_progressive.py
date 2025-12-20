@@ -13,6 +13,13 @@ from locust import HttpUser, task, between
 # Load environment variables
 load_dotenv(override=True)
 
+# ============================================================================
+# REQUEST LIMITER - Comment out these lines to disable request limiting
+# ============================================================================
+# request_count = 0
+# MAX_REQUESTS = 99  # Maximum number of requests to send
+# ============================================================================
+
 
 class ASRConfig:
     """Configuration handler for ASR load testing with AI4I Core API"""
@@ -167,6 +174,19 @@ class ASRUser(HttpUser):
     @task
     def asr_request(self):
         """Task to send ASR request to AI4I Core endpoint"""
+        # # Check request limit (if enabled)
+        # global request_count, MAX_REQUESTS
+        # if 'MAX_REQUESTS' in globals():
+        #     if request_count >= MAX_REQUESTS:
+        #         print(f"\n{'='*70}")
+        #         print(f"🛑 MAX_REQUESTS limit reached ({MAX_REQUESTS})")
+        #         print(f"{'='*70}\n")
+        #         self.environment.runner.quit()
+        #         return
+        #     request_count += 1
+        #     if request_count % 10 == 0:  # Print progress every 10 requests
+        #         print(f"Progress: {request_count}/{MAX_REQUESTS} requests completed")
+
         try:
             # Get random audio sample
             audio_content = self.config.get_random_audio_sample()

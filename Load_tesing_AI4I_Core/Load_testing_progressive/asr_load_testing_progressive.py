@@ -20,6 +20,7 @@ import os
 import sys
 from datetime import datetime
 from typing import Dict, List, Any
+from locust_plugins.listeners import TimescaleListener
 
 # Import from local config_progressive module
 from config_progressive import ASRUser, ASRConfig
@@ -74,7 +75,7 @@ class ProgressiveLoadShape(LoadTestShape):
                     if current_stage_name is not None:
                         capture_stage_metrics(self, current_stage_name, stage_start_time)
 
-                    # Start new stage
+                    # Start new stage 
                     current_stage_name = stage["name"]
                     stage_start_time = time.time()
 
