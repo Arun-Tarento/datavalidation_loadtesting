@@ -20,7 +20,6 @@ import os
 import sys
 from datetime import datetime
 from typing import Dict, List, Any
-from locust_plugins.listeners import TimescaleListener
 
 # Import from local config_progressive module
 from config_progressive import ASRUser, ASRConfig
