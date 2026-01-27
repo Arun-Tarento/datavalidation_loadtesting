@@ -32,9 +32,10 @@ stage_requests_snapshot = 0
 stage_failures_snapshot = 0
 
 
-class ProgressiveLoadShape(LoadTestShape):
+class ProgressiveLoadShape:
     """
     Progressive load shape with per-stage metrics tracking for AI4I Core API
+    Base class - use CustomLoadShape to activate
     """
 
     stages = [
@@ -42,10 +43,10 @@ class ProgressiveLoadShape(LoadTestShape):
         {"duration": 120, "users": 5, "spawn_rate": 1, "name": "Stage 1: Warm-up (5 users)"},
 
         # Stage 2: Baseline - Establish stable performance
-        {"duration": 240, "users": 10, "spawn_rate": 1, "name": "Stage 2: Baseline (10 users)"},
+        {"duration": 240, "users": 10, "spawn_rate": 1, "name": "Stage 2: Baseline (10 users)"}
 
-        # Stage 3: Light stress - Gradual increase
-        {"duration": 360, "users": 15, "spawn_rate": 1, "name": "Stage 3: Light Stress (15 users)"}
+        # # Stage 3: Light stress - Gradual increase
+        # {"duration": 360, "users": 15, "spawn_rate": 1, "name": "Stage 3: Light Stress (15 users)"}
 
         # # Stage 4: Medium load - Hold and observe
         # {"duration": 480, "users": 20, "spawn_rate": 1, "name": "Stage 4: Medium Load (20 users)"},
@@ -439,10 +440,11 @@ def save_enhanced_results(output: Dict[str, Any]):
         print(f"   Recommended Production Capacity: {recommendations['production_capacity']}")
 
 
-class ConservativeProgressiveLoad(LoadTestShape):
+class ConservativeProgressiveLoad:
     """
     Very conservative progressive load - for severely struggling servers.
     Increases load very slowly to find exact breaking point.
+    Base class - use CustomLoadShape to activate
 
     Total duration: ~15 minutes
     """
@@ -503,10 +505,11 @@ class ConservativeProgressiveLoad(LoadTestShape):
         return None
 
 
-class AggressiveProgressiveLoad(LoadTestShape):
+class AggressiveProgressiveLoad:
     """
     Aggressive progressive load - for finding limits quickly.
     Rapidly increases load to find breaking point fast.
+    Base class - use CustomLoadShape to activate
 
     Total duration: ~10 minutes
     """
@@ -516,13 +519,13 @@ class AggressiveProgressiveLoad(LoadTestShape):
         {"duration": 150, "users": 10, "spawn_rate": 2, "name": "Quick Start Hold"},
 
         {"duration": 210, "users": 25, "spawn_rate": 3, "name": "Rapid Ramp (25 users)"},
-        {"duration": 300, "users": 25, "spawn_rate": 3, "name": "Rapid Hold"},
+        {"duration": 300, "users": 25, "spawn_rate": 3, "name": "Rapid Hold"}
 
-        {"duration": 360, "users": 50, "spawn_rate": 5, "name": "Heavy Push (50 users)"},
-        {"duration": 450, "users": 50, "spawn_rate": 5, "name": "Heavy Hold"},
+        # {"duration": 360, "users": 50, "spawn_rate": 5, "name": "Heavy Push (50 users)"},
+        # {"duration": 450, "users": 50, "spawn_rate": 5, "name": "Heavy Hold"},
 
-        {"duration": 510, "users": 75, "spawn_rate": 5, "name": "Breaking Point (75 users)"},
-        {"duration": 600, "users": 75, "spawn_rate": 5, "name": "Observation"},
+        # {"duration": 510, "users": 75, "spawn_rate": 5, "name": "Breaking Point (75 users)"},
+        # {"duration": 600, "users": 75, "spawn_rate": 5, "name": "Observation"},
     ]
 
     def tick(self):
@@ -566,15 +569,15 @@ class AggressiveProgressiveLoad(LoadTestShape):
 
 # Default load shape - comment/uncomment to switch between shapes
 # Use ProgressiveLoadShape for normal capacity testing (recommended, ~13 min)
-class CustomLoadShape(ProgressiveLoadShape):
+class CustomLoadShape(ProgressiveLoadShape, LoadTestShape):
     pass
 
 # Or use ConservativeProgressiveLoad if server is very weak (~15 min)
-# class CustomLoadShape(ConservativeProgressiveLoad):
+# class CustomLoadShape(ConservativeProgressiveLoad, LoadTestShape):
 #     pass
 
 # Or use AggressiveProgressiveLoad to find limits quickly (~10 min)
-# class CustomLoadShape(AggressiveProgressiveLoad):
+# class CustomLoadShape(AggressiveProgressiveLoad, LoadTestShape):
 #     pass
 
 

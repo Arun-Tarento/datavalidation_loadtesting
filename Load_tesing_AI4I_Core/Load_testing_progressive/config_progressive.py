@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from locust import HttpUser, task, between
 
 # Load environment variables
-load_dotenv(override=True)
+load_dotenv(override=False)
 
 # ============================================================================
 # REQUEST LIMITER - Comment out these lines to disable request limiting
@@ -31,7 +31,8 @@ class ASRConfig:
 
         # Authentication
         self.auth_token = os.getenv("AUTH_TOKEN", "").strip('"')
-        self.x_auth_source = os.getenv("X_AUTH_SOURCE", "AUTH_TOKEN")
+        self.api_key = os.getenv("API_KEY", "").strip('"')
+        self.x_auth_source = os.getenv("X_AUTH_SOURCE", "API_KEY")
 
         # ASR Service Configuration
         self.service_id = os.getenv("ASR_SERVICE_ID", "asr_am_ensemble")
@@ -108,6 +109,8 @@ class ASRConfig:
         """Validate required configurations"""
         if not self.auth_token:
             raise ValueError("AUTH_TOKEN is required in .env file")
+        if not self.api_key:
+            raise ValueError("API_KEY is required in .env file")
         if not self.asr_samples:
             raise ValueError("No ASR audio samples found. Please check ASR_SAMPLES_FILE path in .env")
         if not self.service_id:
@@ -123,7 +126,8 @@ class ASRConfig:
             ],
             "config": {
                 "language": {
-                    "sourceLanguage": self.source_language
+                    "sourceLanguage": self.source_language,
+                    "sourceScriptCode": self.source_script
                 },
                 "serviceId": self.service_id,
                 "audioFormat": self.audio_format,
@@ -144,7 +148,8 @@ class ASRConfig:
             "accept": "application/json",
             "x-auth-source": self.x_auth_source,
             "Content-Type": "application/json",
-            "Authorization": self.auth_token
+            "Authorization": self.auth_token,
+            "X-API-Key": self.api_key
         }
 
     def get_random_audio_sample(self) -> str:
@@ -168,7 +173,7 @@ class ASRUser(HttpUser):
 
     def on_start(self):
         """Called when a simulated user starts"""
-        load_dotenv(override=True)
+        load_dotenv(override=False)  # Don't override command line env vars
         self.config = ASRConfig()
 
     @task
@@ -343,7 +348,7 @@ class NMTUser(HttpUser):
 
     def on_start(self):
         """Called when a simulated user starts"""
-        load_dotenv(override=True)
+        load_dotenv(override=False)  # Don't override command line env vars
         self.config = NMTConfig()
 
     @task
@@ -509,7 +514,7 @@ class TTSUser(HttpUser):
 
     def on_start(self):
         """Called when a simulated user starts"""
-        load_dotenv(override=True)
+        load_dotenv(override=False)  # Don't override command line env vars
         self.config = TTSConfig()
 
     @task
