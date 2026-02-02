@@ -1,0 +1,98 @@
+import locust
+from locust import HttpUser, task, between 
+from loguru import logger
+import base64
+from pathlib import Path
+import itertools
+import os
+import time
+import json
+base_url = "https://sandbox.ai4inclusion.org"
+
+
+##  commands to run 
+## 
+
+
+
+
+class NmtUser(HttpUser):
+    source_cache = None  
+    source_iterator = None 
+    wait_time = between(1, 5)
+    api_key = "ak_31E6O1EHGgvk0tMAweXXwavp1ns7aCDs9vMI-iFVhC4"
+    TOKEN_LIFETIME = 14*60  # seconds
+    connection_timeout = 120  # seconds
+    network_timeout = 120
+
+    def on_start(self):
+        self.login()
+        if NmtUser.source_cache is None:
+            with open("Samples/NMT/nmt_100_samples.json", "r", encoding="utf-8") as f:
+                data = json.load(f)
+                NmtUser.source_cache = data["nmt_samples"]
+                NmtUser.source_iterator = itertools.cycle(NmtUser.source_cache)
+                logger.info(f"✅ Loaded {len(NmtUser.source_cache)} NMT samples")
+
+            
+
+
+        
+    def on_stop(self):
+        self.end_time = time.time()
+        self.total_time = self.end_time - self.start_time
+        logger.info(f"Total time: {self.total_time} seconds")
+
+    def login(self):
+            login_response = self.client.post(f"{base_url}/api/v1/auth/login", json={
+                                                                    "email": "arunagiriperumal.atchilingam+01@tarento.com",
+                                                                    "password": "Password@123",
+                                                                    "remember_me": False
+                                                                })
+                                                            
+            #logger.info(login_response.json())
+
+            if login_response.status_code == 200:
+                logger.info(f"Login successful with status code {login_response.status_code}")
+            else:
+                logger.error(f"Login failed with status code {login_response.status_code}")
+            self.access_token = login_response.json().get("access_token")
+            self.refresh_token = login_response.json().get("refresh_token")
+            self.token_expiry_time = time.time() + NmtUser.TOKEN_LIFETIME
+    
+    def token_refresh(self):
+        if time.time() > self.token_expiry_time:
+            refresh_response = self.client.post(f"{base_url}/api/v1/auth/refresh", json={
+                                                                    "refresh_token": self.refresh_token
+                                                                })
+
+            if refresh_response.status_code == 200:
+                logger.info(f"Token refresh successful with status code {refresh_response.status_code}")
+            else:
+                logger.error(f"Token refresh failed with status code {refresh_response.status_code}")
+            self.access_token = refresh_response.json().get("access_token")
+            self.token_expiry_time = time.time() + ASRUser.TOKEN_LIFETIME
+
+    @task
+    def nmt_task(self):
+        self.token_refresh()
+        sample = next(NmtUser.source_iterator)
+        source_id = sample["source_id"]
+        source_text = sample["source"]
+        logger.info(f"Smaple used {source_id} : {source_text}")
+
+        headers  = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+            "x-api-key" : NmtUser.api_key,
+            "x-auth-source": "BOTH",
+            "Connection": "keep-alive"  }
+
+        payload =  { "input": [{"source": source_text}],
+        "config": {"serviceId": "ai4bharat/indictrans--gpu-t4","language": {"sourceLanguage": "hi","targetLanguage": "en"}},
+        "controlConfig": {"additionalProp1": {"dataTracking":False}}}
+        
+
+        nmt_response = self.client.post(url=f"{base_url}/api/v1/nmt/inference", headers=headers, json=payload )
+
+
