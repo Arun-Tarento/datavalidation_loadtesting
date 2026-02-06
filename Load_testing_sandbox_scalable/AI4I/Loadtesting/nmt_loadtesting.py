@@ -11,7 +11,7 @@ base_url = "https://sandbox.ai4inclusion.org"
 
 
 ##  commands to run 
-## 
+## locust -f  Load_testing_sandbox_scalable/AI4I/Loadtesting/nmt_loadtesting.py --users 100 --spawn-rate 1 --run-time 1h --host https://sandbox.ai4inclusion.org
 
 
 
@@ -26,6 +26,7 @@ class NmtUser(HttpUser):
     network_timeout = 120
 
     def on_start(self):
+        self.start_time = time.time()
         self.login()
         if NmtUser.source_cache is None:
             with open("Samples/NMT/nmt_100_samples.json", "r", encoding="utf-8") as f:
@@ -34,7 +35,7 @@ class NmtUser(HttpUser):
                 NmtUser.source_iterator = itertools.cycle(NmtUser.source_cache)
                 logger.info(f"✅ Loaded {len(NmtUser.source_cache)} NMT samples")
 
-            
+           
 
 
         
@@ -71,7 +72,7 @@ class NmtUser(HttpUser):
             else:
                 logger.error(f"Token refresh failed with status code {refresh_response.status_code}")
             self.access_token = refresh_response.json().get("access_token")
-            self.token_expiry_time = time.time() + ASRUser.TOKEN_LIFETIME
+            self.token_expiry_time = time.time() + NmtUser.TOKEN_LIFETIME
 
     @task
     def nmt_task(self):
@@ -92,7 +93,14 @@ class NmtUser(HttpUser):
         "config": {"serviceId": "ai4bharat/indictrans--gpu-t4","language": {"sourceLanguage": "hi","targetLanguage": "en"}},
         "controlConfig": {"additionalProp1": {"dataTracking":False}}}
         
+        try:
+            start_time = time.time()
+            nmt_response = self.client.post(url=f"{base_url}/api/v1/nmt/inference", headers=headers, json=payload, timeout= NmtUser.connection_timeout )
+            elasped = time.time() - start_time
+            logger.info(f"NMT response: {nmt_response.status_code}")
+            logger.info(f"NMT request took {elasped:.2f} seconds")
+        except Exception as e:
+            logger.error(f"NMT request failed: {e}")
 
-        nmt_response = self.client.post(url=f"{base_url}/api/v1/nmt/inference", headers=headers, json=payload )
 
 

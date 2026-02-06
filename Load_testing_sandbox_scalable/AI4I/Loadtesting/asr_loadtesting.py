@@ -7,6 +7,12 @@ import os
 import time
 base_url = "https://sandbox.ai4inclusion.org"
 
+##  commands to run 
+## locust -f Load_testing_sandbox_scalable/AI4I/asr_loadtesting.py --users 100 --spawn-rate 1 --run-time 1h --host https://sandbox.ai4inclusion.org
+
+
+
+
 class ASRUser(HttpUser):
     audio_cache = None
     audio_iterator = None

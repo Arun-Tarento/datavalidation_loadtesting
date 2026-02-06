@@ -114,7 +114,7 @@ class AsrUser():
             payload = payload      
 
         elif error_type == "500": # Internal Server Error - Null/invalid values
-            payload = {"audio": [{"audioContent": None   ,
+            payload = {"audio": [{"audioContent": None
                                             # "audioUri": "string" 
                                             }],
                                         "config": {
