@@ -3,6 +3,23 @@ from loguru import logger
 import time
 import random
 import os
+from locust_plugins.listeners.influxdb import  InfluxDBSettings
+from locust_plugins.listeners import InfluxDB2Listener
+
+
+influxdb_settings = InfluxDBSettings(
+    host="localhost",
+    port=8086,
+    token="ZqSVoOFsf60VS_zDHb7YIGSWfd1k2XYgyGSWJuU7Pd6RN1Id7ZQLp7Ky1iDlgXI78jYRJxIjLgfMh86z6eFszw==",  # From step 2
+    org="ai4i",
+    bucket="locust_bucket"
+)
+
+@events.init.add_listener
+def on_locust_init(environment, **kwargs):
+    InfluxDBListener(env=environment, **influxdb_settings.__dict__)
+
+
 
 # Setup logging
 os.makedirs("logs", exist_ok=True)
@@ -73,6 +90,8 @@ class LoginUser(HttpUser):
                 
         # else:
         #     logger.error(f"❌ {self.account['email']} login failed ({response.status_code})")
+
+
 
 
 @events.test_stop.add_listener
