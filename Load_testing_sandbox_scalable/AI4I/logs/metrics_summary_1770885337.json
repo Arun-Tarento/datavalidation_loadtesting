@@ -1,0 +1,20 @@
+{
+  "total_requests": 4,
+  "successful": 0,
+  "failed": 4,
+  "success_rate": "0.00%",
+  "duration_seconds": "19.86",
+  "requests_per_second": "0.20",
+  "response_times": {
+    "min": "1.06s",
+    "max": "6.49s",
+    "avg": "2.66s",
+    "median": "1.77s",
+    "p95": "N/A",
+    "p99": "N/A"
+  },
+  "status_codes": {
+    "403": 4
+  },
+  "top_errors": {}
+}

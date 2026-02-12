@@ -3,26 +3,13 @@ from loguru import logger
 import time
 import random
 import os
-from locust_plugins.listeners.influxdb import  InfluxDBSettings
-from locust_plugins.listeners import InfluxDB2Listener
 
 
-influxdb_settings = InfluxDBSettings(
-    host="localhost",
-    port=8086,
-    token="ZqSVoOFsf60VS_zDHb7YIGSWfd1k2XYgyGSWJuU7Pd6RN1Id7ZQLp7Ky1iDlgXI78jYRJxIjLgfMh86z6eFszw==",  # From step 2
-    org="ai4i",
-    bucket="locust_bucket"
-)
-
-@events.init.add_listener
-def on_locust_init(environment, **kwargs):
-    InfluxDBListener(env=environment, **influxdb_settings.__dict__)
 
 
 
 # Setup logging
-os.makedirs("logs", exist_ok=True)
+os.makedirs("Load_testing_sandbox_scalable/AI4I/logs", exist_ok=True)
 logger.add(
     "Load_testing_sandbox_scalable/AI4I/logs/login_test_{time:YYYY-MM-DD_HH-mm-ss}.log",
     format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
@@ -30,6 +17,7 @@ logger.add(
 )
 
 base_url = "https://sandbox.ai4inclusion.org"
+
 
 # Option 1: If you have 100 created accounts
 TEST_ACCOUNTS = [

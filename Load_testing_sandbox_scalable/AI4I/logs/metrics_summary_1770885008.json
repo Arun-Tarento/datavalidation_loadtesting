@@ -1,0 +1,23 @@
+{
+  "total_requests": 6,
+  "successful": 0,
+  "failed": 6,
+  "success_rate": "0.00%",
+  "duration_seconds": "26.24",
+  "requests_per_second": "0.23",
+  "response_times": {
+    "min": "1.19s",
+    "max": "6.14s",
+    "avg": "3.17s",
+    "median": "2.18s",
+    "p95": "N/A",
+    "p99": "N/A"
+  },
+  "status_codes": {
+    "403": 3,
+    "0": 3
+  },
+  "top_errors": {
+    "'NmtUser' object has no attribute 'request_count'": 3
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "total_requests": 13,
+  "successful": 13,
+  "failed": 0,
+  "success_rate": "100.00%",
+  "duration_seconds": "44.45",
+  "requests_per_second": "0.29",
+  "response_times": {
+    "min": "-0.23s",
+    "max": "9.29s",
+    "avg": "3.96s",
+    "median": "2.80s",
+    "p95": "N/A",
+    "p99": "N/A"
+  },
+  "status_codes": {
+    "200": 13
+  },
+  "top_errors": {}
+}
