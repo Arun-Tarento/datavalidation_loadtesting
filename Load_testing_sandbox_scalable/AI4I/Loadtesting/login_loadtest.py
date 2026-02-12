@@ -26,7 +26,7 @@ TEST_ACCOUNTS = [
 ]
 
 class LoginUser(HttpUser):
-    wait_time = between(1, 3)
+    wait_time = between(60, 70)
     host = base_url
 
     def on_start(self):
