@@ -51,6 +51,7 @@ class NmtUser(HttpUser):
 
 
     def login(self):
+        try:
             login_response = self.client.post(f"{base_url}/api/v1/auth/login", json={
                                                                     "email": "arunagiriperumal.atchilingam+01@tarento.com",
                                                                     "password": "Password@123",
@@ -60,44 +61,82 @@ class NmtUser(HttpUser):
             #logger.info(login_response.json())
 
             if login_response.status_code == 200:
-                logger.info(f"Login successful with status code {login_response.status_code}")
+                logger.info(f"✅ Login successful with status code {login_response.status_code}")
+                # ✅ Only parse JSON on success
+                data = login_response.json()
+                self.access_token = data.get("access_token")
+                self.refresh_token = data.get("refresh_token")
+                self.token_expiry_time = time.time() + NmtUser.TOKEN_LIFETIME
             else:
-                logger.error(f"Login failed with status code {login_response.status_code}")
-            self.access_token = login_response.json().get("access_token")
-            self.refresh_token = login_response.json().get("refresh_token")
-            self.token_expiry_time = time.time() + NmtUser.TOKEN_LIFETIME
+                logger.error(f"❌ Login failed with status code {login_response.status_code}")
+                # ✅ Don't try to parse JSON on error
+                logger.error(f"Response: {login_response.text[:200]}")  # Log first 200 chars
+                self.access_token = None
+                self.refresh_token = None
+                
+        except Exception as e:
+            logger.error(f"❌ Login exception: {e}")
+            self.access_token = None
+            self.refresh_token = None
     
     def token_refresh(self):
+        """Refresh access token"""
         if time.time() > self.token_expiry_time:
-            refresh_response = self.client.post(f"{base_url}/api/v1/auth/refresh", json={
-                                                                    "refresh_token": self.refresh_token
-                                                                })
-
-            if refresh_response.status_code == 200:
-                logger.info(f"Token refresh successful with status code {refresh_response.status_code}")
-            else:
-                logger.error(f"Token refresh failed with status code {refresh_response.status_code}")
-            self.access_token = refresh_response.json().get("access_token")
-            self.token_expiry_time = time.time() + NmtUser.TOKEN_LIFETIME
+            try:
+                refresh_response = self.client.post(
+                    f"{base_url}/api/v1/auth/refresh",
+                    json={"refresh_token": self.refresh_token}
+                )
+                
+                if refresh_response.status_code == 200:
+                    logger.info(f"✅ Token refresh successful")
+                    data = refresh_response.json()
+                    self.access_token = data.get("access_token")
+                    self.token_expiry_time = time.time() + NmtUser.TOKEN_LIFETIME
+                else:
+                    logger.error(f"❌ Token refresh failed: {refresh_response.status_code}")
+                    self.access_token = None
+                    
+            except Exception as e:
+                logger.error(f"❌ Token refresh exception: {e}")
+                self.access_token = None
 
     @task
     def nmt_task(self):
+        """NMT translation task"""
+        # ✅ Skip if no access token
+        if not self.access_token:
+            logger.warning("⚠️ No access token, skipping NMT request")
+            return
+        
         self.token_refresh()
+        
+        # ✅ Check again after refresh attempt
+        if not self.access_token:
+            logger.warning("⚠️ Token refresh failed, skipping NMT request")
+            return
+        
         sample = next(NmtUser.source_iterator)
         source_id = sample["source_id"]
         source_text = sample["source"]
-        logger.info(f"Smaple used {source_id} : {source_text}")
+        logger.info(f"Sample used {source_id}: {source_text}")
 
-        headers  = {
+        headers = {
             "Authorization": f"Bearer {self.access_token}",
             "Content-Type": "application/json",
-            "x-api-key" : NmtUser.api_key,
+            "x-api-key": NmtUser.api_key,
             "x-auth-source": "BOTH",
-            "Connection": "keep-alive"  }
+            "Connection": "keep-alive"
+        }
 
-        payload =  { "input": [{"source": source_text}],
-        "config": {"serviceId": "ai4bharat/indictrans--gpu-t4","language": {"sourceLanguage": "hi","targetLanguage": "en"}},
-        "controlConfig": {"additionalProp1": {"dataTracking":False}}}
+        payload = {
+            "input": [{"source": source_text}],
+            "config": {
+                "serviceId": "ai4bharat/indictrans--gpu-t4",
+                "language": {"sourceLanguage": "hi", "targetLanguage": "en"}
+            },
+            "controlConfig": {"additionalProp1": {"dataTracking": False}}
+        }
 
         start_time = time.time()
         error = None
@@ -115,7 +154,7 @@ class NmtUser(HttpUser):
             
             # ✅ Record metrics
             metrics.record_request(status_code, elapsed)
-            self.request_count += 1  # ✅ Increment per-user counter
+            self.request_count += 1
             
             if status_code == 200:
                 logger.info(f"✅ NMT success: {status_code} ({elapsed:.2f}s)")
@@ -125,10 +164,10 @@ class NmtUser(HttpUser):
         except Exception as e:
             elapsed = time.time() - start_time
             error = str(e)
-            status_code = 0  # Network error
+            status_code = 0
             
             metrics.record_request(status_code, elapsed, error)
-            self.request_count += 1  # ✅ Increment even on error
+            self.request_count += 1
             logger.error(f"❌ NMT request failed: {e} ({elapsed:.2f}s)")
 
 # ✅ Event listeners with error handling
