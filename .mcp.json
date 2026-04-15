@@ -1,0 +1,51 @@
+{
+    "mcpServers": {
+        "puppeteer": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@modelcontextprotocol/server-puppeteer"
+            ]
+        },
+        "filesystem": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@modelcontextprotocol/server-filesystem",
+                "/home/arun/Doc2/AI4I_Automation"
+            ]
+        },
+        "brave-search": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@modelcontextprotocol/server-brave-search"
+            ],
+            "env": {
+                "BRAVE_API_KEY": ""
+            }
+        },
+        "github": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@modelcontextprotocol/server-github"
+            ],
+            "env": {
+                "GITHUB_PERSONAL_ACCESS_TOKEN": ""
+            }
+        },
+        "atlassian": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@abhiz123/mcp-server-atlassian"
+            ],
+            "env": {
+                "ATLASSIAN_INSTANCE_URL": "https://coss-team-ai4x.atlassian.net",
+                "ATLASSIAN_EMAIL": "arunagiriperumal.atchilingam@tarento.com",
+                "ATLASSIAN_API_TOKEN": "ATATT3xFfGF0uTmtTQDec7D9zIZBCwbg2HkqFDdpMKWphlWSlsmfkX3bg-jYD_KKutTrlHQHBcXZQbBaVD68Sg1lB0r0M1Ar8r-HdpMoBKwttgiJFyb4mj_hjgD48FSJ8v2Fs87V87xSMLmte51lL_3DKS4Je9MIpqFBneY2o6vvCxou6VptnPQ=44EF9825"
+            }
+        }
+    }
+}
