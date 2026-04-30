@@ -3,8 +3,8 @@ from dotenv import load_dotenv
 
 # Load env file based on ENV variable (default: staging)
 # Usage: ENV=sandbox python testing/AI4I/Errors/asr_errors.py
-env = os.getenv("ENV", "staging")
-load_dotenv(f"testing/.{env}.env", override=True)
+load_dotenv("testing/.env")
+env = os.getenv("ENVIRONMENT", "staging")
 
 from faker import Faker
 import requests

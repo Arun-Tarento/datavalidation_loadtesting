@@ -3,8 +3,8 @@ from dotenv import load_dotenv
 
 # Load env file based on ENV variable (default: staging)
 # Usage: locust -f testing/AI4I/loadtesting/login_test_concurrency.py -u 1 -r 1 -t 3m --host=https://staging.ai4inclusion.org
-env = os.getenv("ENV", "staging")
-load_dotenv(f"testing/.{env}.env", override=True)
+load_dotenv("testing/.env")
+env = os.getenv("ENVIRONMENT", "staging")
 
 from locust import HttpUser, task, between, events, constant
 from loguru import logger

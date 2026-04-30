@@ -10,8 +10,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # locust -f testing/AI4I/loadtesting/NMT/nmt_loadtesting.py --users 10 --spawn-rate 1 --run-time 1h
 # ENV=sandbox locust -f testing/AI4I/loadtesting/NMT/nmt_loadtesting.py --users 10 --spawn-rate 1 --run-time 1h
 
-env = os.getenv("ENV", "staging")
-load_dotenv(f"testing/.{env}.env", override=True)
+load_dotenv("testing/.env")
+env = os.getenv("ENVIRONMENT", "staging")
 
 from locust import HttpUser, task, between, events
 from loguru import logger

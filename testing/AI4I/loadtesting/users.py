@@ -1,59 +1,78 @@
-import requests
+import os
 import time
+import requests
+from dotenv import load_dotenv
 
-# Configuration
-base_url = "https://sandbox.ai4inclusion.org"
-admin_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJhZG1pbkBhaTRpbmNsdXNpb24ub3JnIiwidXNlcm5hbWUiOiJhZG1pbiIsImV4cCI6MTc3MzU5MjAwMiwidHlwZSI6ImFjY2VzcyIsInJvbGVzIjpbIkFETUlOIl19.aejinaQKkeOK500Fj7h5_2HjsbeblyMWxNI_zlpO8Xc"
-api_key = "ak_JijeEnGF0lBDbO45eZnYmmODzRb_U6GTtmzIYoOWPws"
+# Active environment is set by running: python testing/switch_env.py <staging|sandbox>
+load_dotenv("testing/.env")
+env = os.getenv("ENVIRONMENT", "staging")
 
-headers = {
-    "accept": "*/*",
-    "Authorization": f"Bearer {admin_token}",
-    "X-API-Key": api_key,
-    "Content-Type": "application/json"
-}
+base_url      = os.getenv("BASE_URL")
+account_count = int(os.getenv("TEST_ACCOUNT_COUNT", 5))
+email_pattern = os.getenv("TEST_ACCOUNT_EMAIL_PATTERN", "ltest_user_{}@test.com")
+password      = os.getenv("TEST_ACCOUNT_PASSWORD", "Password@123")
 
-# Create 100 test users
-success_count = 0
-failed_count = 0
+print(f"Environment    : {env}")
+print(f"Base URL       : {base_url}")
+print(f"Users to create: {account_count}")
+print("=" * 60)
 
-for i in range(1, 101):
+
+def create_user(index):
+    """Register a single test user. Returns True on success, None on rate limit."""
     payload = {
-        "email": f"ltest_user_{i}@test.com",
-        "username": f"ltest_user_{i}",
-        "password": "Password@123",
-        "confirm_password": "Password@123",
-        "full_name": f"Load Test User {i}",
-        "phone_number": f"99099099{i:02d}",  # Generates unique phone numbers
-        "timezone": "UTC",
-        "language": "en",
-        "is_tenant": True
+        "email":            email_pattern.format(index),
+        "username":         f"ltest_user_{index}",
+        "password":         password,
+        "confirm_password": password,
+        "full_name":        f"Load Test User {index}",
+        "phone_number":     f"99099099{index:02d}",
+        "timezone":         "UTC",
+        "language":         "en",
+        "is_tenant":        True
     }
-    
-    try:
-        response = requests.post(
-            f"{base_url}/api/v1/auth/register",
-            headers=headers,
-            json=payload,
-            timeout=30
-        )
-        
-        if response.status_code in [200, 201]:
-            success_count += 1
-            print(f"✅ Created user {i}/100: ltest_user_{i}@test.com")
-        else:
-            failed_count += 1
-            print(f"❌ Failed user {i}/100: {response.status_code} - {response.text[:100]}")
-            
-    except Exception as e:
-        failed_count += 1
-        print(f"❌ Exception for user {i}/100: {e}")
-    
-    # Small delay to avoid rate limiting
-    time.sleep(10)
+    resp = requests.post(
+        f"{base_url}/api/v1/auth/register",
+        json=payload,
+        timeout=30
+    )
 
-print("\n" + "="*60)
-print(f"📊 Summary:")
-print(f"   Successfully created: {success_count}/100")
-print(f"   Failed: {failed_count}/100")
-print("="*60)
+    if resp.status_code in [200, 201]:
+        print(f"✅ [{index}/{account_count}] Created : {payload['email']}")
+        return True
+    elif resp.status_code == 409:
+        print(f"⚠️  [{index}/{account_count}] Already exists: {payload['email']}")
+        return True
+    elif resp.status_code == 429:
+        print(f"🚫 [{index}/{account_count}] Rate limited — stopping early.")
+        return None
+    else:
+        print(f"❌ [{index}/{account_count}] Failed ({resp.status_code}): {resp.text[:150]}")
+        return False
+
+
+def main():
+    success, failed = 0, 0
+
+    for i in range(5, account_count + 1):
+        result = create_user(i)
+
+        if result is None:   # Rate limited — stop
+            break
+        elif result:
+            success += 1
+        else:
+            failed += 1
+
+        if i < account_count:
+            time.sleep(5)
+
+    print(f"\n{'=' * 60}")
+    print(f"📊 Summary ({env}):")
+    print(f"   Created : {success}/{account_count}")
+    print(f"   Failed  : {failed}/{account_count}")
+    print(f"{'=' * 60}")
+
+
+if __name__ == "__main__":
+    main()

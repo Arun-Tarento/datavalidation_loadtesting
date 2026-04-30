@@ -1,0 +1,21 @@
+{
+  "total_requests": 0,
+  "successful": 0,
+  "failed": 0,
+  "success_rate": "0%",
+  "duration_seconds": "0.00",
+  "requests_per_second": "0",
+  "response_times": {
+    "min": "N/A",
+    "max": "N/A",
+    "avg": "N/A",
+    "median": "N/A",
+    "p95": "N/A",
+    "p99": "N/A"
+  },
+  "status_codes": {},
+  "top_errors": {},
+  "failed_traces": [],
+  "slow_traces": [],
+  "successful_traces": []
+}
